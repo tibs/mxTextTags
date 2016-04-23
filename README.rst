@@ -35,11 +35,22 @@ available here - even if I never actually get round to those couple of things...
 
 Things you should know:
 
-* At time of writing, I don't know if the code works with a modern Python.
-  I'll update the status as I find out.
+* It does seem to work (if the minimal testing of doing::
+
+    $ ./Translate.py Examples.tag temp.py
+    $ diff -du Examples.py temp.py
+
+  and getting no differences between the current output and the expected
+  output can be taken as proof of working - so yeh for the stability of
+  Python, since this code was written for Python 1.5, and my Mac is running
+  2.7). However, I've not tried to see if the output is still valid for
+  current day mxTexTools yet (that's gone from v1.1.1 to v3.2) - I'll update
+  this when I know.
 * Email addresses and links in the Metadata.html page have rotted - don't
   trust them!
-* There aren't any unit tests - this is *old* software.
+* There aren't any unit tests - this is *old* software. In fact, there aren't
+  any tests at all, apart from comparing the output to an earlier version,
+  and the fact that the program itself seems to run.
 * mxTextTools itself doesn't appear to have a version that works on Python 3,
   so it probably doesn't hurt that this is solidly Python 2 code.
 
