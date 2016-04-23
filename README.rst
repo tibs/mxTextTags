@@ -44,7 +44,7 @@ Things you should know:
   output can be taken as proof of working - so yeh for the stability of
   Python, since this code was written for Python 1.5, and my Mac is running
   2.7). However, I've not tried to see if the output is still valid for
-  current day mxTexTools yet (that's gone from v1.1.1 to v3.2) - I'll update
+  current day mxTextTools yet (that's gone from v1.1.1 to v3.2) - I'll update
   this when I know.
 * Email addresses and links in the Metadata.html page have rotted - don't
   trust them!
