@@ -1,0 +1,483 @@
+<HTML>
+<HEAD><TITLE>Examples.tag</TITLE></HEAD>
+		  <BODY BGCOLOR=#FFFFFF>
+		  <!--header-->
+		  <!--script--><PRE><FONT COLOR=#1111CC># -*- python -*-</FONT>
+<FONT COLOR=#115511>"""Translation tags for Translate.py"""</FONT>
+
+__version__ = <FONT COLOR=#115511>"0.3 (tiepin) of 1999-11-15"</FONT>
+__author__ = <FONT COLOR=#115511>"Tibs"</FONT>
+
+<FONT COLOR=#1111CC># This is a back-translation of the tuples which were written by hand</FONT>
+<FONT COLOR=#1111CC># within Translate.py, *but* it is also suitable for translation (by</FONT>
+<FONT COLOR=#1111CC># said module) into Python code, and then importing into Translate.py</FONT>
+<FONT COLOR=#1111CC># for use instead of the original (hand written) tuples.</FONT>
+
+<FONT COLOR=#3333CC><B>from</B></FONT> TextTools <FONT COLOR=#3333CC><B>import</B></FONT> *
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#1111CC># We are not, initially, going to try for anything very sophisticated</FONT>
+<FONT COLOR=#1111CC># - just something that will get us bootstrapped, so that I can use the</FONT>
+<FONT COLOR=#1111CC>#   "little language" to write more sophisticated stuff (without having</FONT>
+<FONT COLOR=#1111CC>#   to worry about dropped commas between tuples, and so on!)</FONT>
+
+
+<FONT COLOR=#1111CC># Whitespace is always useful</FONT>
+t_whitespace <FONT COLOR=#3333CC><B>is</B></FONT>:
+    AllIn <FONT COLOR=#115511>' \t'</FONT>
+
+t_opt_whitespace <FONT COLOR=#3333CC><B>is</B></FONT>:
+    t_whitespace F:next       <FONT COLOR=#1111CC># move to next tuple if not whitespace</FONT>
+
+<FONT COLOR=#1111CC># Comments are fairly simple</FONT>
+t_comment <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'comment'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        Is <FONT COLOR=#115511>'#'</FONT>
+        AllNotIn <FONT COLOR=#115511>'\n\r'</FONT> F:MatchOk
+
+<FONT COLOR=#1111CC># We care about the "content" of the indentation at the start of a</FONT>
+<FONT COLOR=#1111CC># line, but note that it is optional</FONT>
+t_indent <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'indent'</FONT> = AllIn <FONT COLOR=#115511>' \t'</FONT>
+t_indentation <FONT COLOR=#3333CC><B>is</B></FONT>:
+    t_indent F:next           <FONT COLOR=#1111CC># zero indentation doesn't show</FONT>
+
+<FONT COLOR=#1111CC># A string is text within single or double quotes</FONT>
+<FONT COLOR=#1111CC># (of course, this is an oversimplification, because we should also</FONT>
+<FONT COLOR=#1111CC>#  deal with things like "This is a \"substring\"", and it would be</FONT>
+<FONT COLOR=#1111CC>#  nice to be able to cope with triple-quoted strings too, but it</FONT>
+<FONT COLOR=#1111CC>#  will do for a start)</FONT>
+
+<FONT COLOR=#1111CC># Major bug - doesn't recognised zero length strings...</FONT>
+<FONT COLOR=#1111CC># (since "AllNotIn" must match at least one character)</FONT>
+t_string <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'str'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        Is <FONT COLOR=#115511>"'"</FONT>:
+            <FONT COLOR=#115511>'text'</FONT> = AllNotIn <FONT COLOR=#115511>"'"</FONT>
+            Is <FONT COLOR=#115511>"'"</FONT> F:MatchFail T:MatchOk
+        Is <FONT COLOR=#115511>'"'</FONT>
+        <FONT COLOR=#115511>'text'</FONT> = AllNotIn <FONT COLOR=#115511>'"'</FONT>
+        Is <FONT COLOR=#115511>'"'</FONT>
+
+<FONT COLOR=#1111CC># An integer is a series of digits...</FONT>
+t_integer <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'int'</FONT> = AllIn number
+
+t_signed_integer <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'signed_int'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        <FONT COLOR=#115511>'sign'</FONT> = Is <FONT COLOR=#115511>"+"</FONT> F:next T:&lt;int&gt;
+        <FONT COLOR=#115511>'sign'</FONT> = Is <FONT COLOR=#115511>"-"</FONT> F:next         <FONT COLOR=#1111CC># sign is optional</FONT>
+        &lt;int&gt;
+        t_integer
+
+<FONT COLOR=#1111CC># We'll only go for the simplest words</FONT>
+<FONT COLOR=#1111CC># Remember to be careful to specify the LONGEST possible match first, so that</FONT>
+<FONT COLOR=#1111CC># we try for "IsIn" before we try for "Is" (because "IsIn" would *match* "Is",</FONT>
+<FONT COLOR=#1111CC># leaving us with a spurious "In" hanging around...)</FONT>
+t_operation <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'op'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"AllInSet"</FONT>        F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"AllIn"</FONT>           F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"AllNotIn"</FONT>        F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"CallArg"</FONT>         F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Call"</FONT>            F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"EOF"</FONT>             F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Fail"</FONT>            F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"IsInSet"</FONT>         F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"IsIn"</FONT>            F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"IsNotIn"</FONT>         F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"IsNot"</FONT>           F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Is"</FONT>              F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Jump"</FONT>            F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"LoopControl"</FONT>     F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Loop"</FONT>            F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Move"</FONT>            F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"NoWord"</FONT>          F:next T:MatchOk <FONT COLOR=#1111CC># alias for WordStart</FONT>
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Skip"</FONT>            F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"SubTableInList"</FONT>  F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"SubTable"</FONT>        F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"sFindWord"</FONT>       F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"sWordStart"</FONT>      F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"sWordEnd"</FONT>        F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"TableInList"</FONT>     F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Table"</FONT>           F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"WordStart"</FONT>       F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"WordEnd"</FONT>         F:next T:MatchOk
+        <FONT COLOR=#115511>'op'</FONT> = Word <FONT COLOR=#115511>"Word"</FONT>            F:MatchFail T:MatchOk
+
+<FONT COLOR=#1111CC># Python keywords</FONT>
+t_keyword <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'keyword'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        Word <FONT COLOR=#115511>"and"</FONT>      F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"assert"</FONT>   F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"break"</FONT>    F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"class"</FONT>    F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"continue"</FONT> F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"def"</FONT>      F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"del"</FONT>      F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"elif"</FONT>     F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"else"</FONT>     F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"except"</FONT>   F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"exec"</FONT>     F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"finally"</FONT>  F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"for"</FONT>      F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"from"</FONT>     F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"global"</FONT>   F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"if"</FONT>       F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"import"</FONT>   F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"in"</FONT>       F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"is"</FONT>       F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"lambda"</FONT>   F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"not"</FONT>      F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"or"</FONT>       F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"pass"</FONT>     F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"print"</FONT>    F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"raise"</FONT>    F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"return"</FONT>   F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"try"</FONT>      F:next T:&lt;check&gt;
+        Word <FONT COLOR=#115511>"while"</FONT>    F:MatchFail T:&lt;check&gt;
+        &lt;check&gt;
+        <FONT COLOR=#1111CC># In order to not recognise things like "in_THIS_CASE"</FONT>
+        <FONT COLOR=#1111CC># we must check that the next character is not legitimate</FONT>
+        <FONT COLOR=#1111CC># within an identifier</FONT>
+        IsIn alpha+<FONT COLOR=#115511>"_"</FONT>+number F:next T:MatchFail
+        <FONT COLOR=#1111CC># If it wasn't another identifier character, we need to</FONT>
+        <FONT COLOR=#1111CC># unread it so that it can be recognised as something else</FONT>
+        <FONT COLOR=#1111CC># (so that, for instance, "else:" is seen as "else" followed</FONT>
+        <FONT COLOR=#1111CC>#  by ":")</FONT>
+        Skip back
+
+<FONT COLOR=#1111CC># Do the same for mxText commands</FONT>
+t_mxkeyword <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'mxKeyword'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_operation
+        IsIn alpha+<FONT COLOR=#115511>"_"</FONT>+number F:next T:MatchFail
+        Skip back
+
+<FONT COLOR=#1111CC># Traditional identifiers</FONT>
+t_identifier <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'identifier'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_keyword F:next T:MatchFail      <FONT COLOR=#1111CC># don't allow Python keywords</FONT>
+        t_mxkeyword F:next T:MatchFail    <FONT COLOR=#1111CC># don't allow mxText commands</FONT>
+        IsIn alpha+<FONT COLOR=#115511>"_"</FONT>                    <FONT COLOR=#1111CC># can't start with a digit</FONT>
+        AllIn alpha+<FONT COLOR=#115511>'_'</FONT>+number F:MatchOk
+
+<FONT COLOR=#1111CC># We don't yet deal with the following with anything in parentheses,</FONT>
+<FONT COLOR=#1111CC># which means we can't handle functions or command lists, or other</FONT>
+<FONT COLOR=#1111CC># things which "look like" a tuple</FONT>
+t_argument <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'arg'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        <FONT COLOR=#115511>'arg'</FONT> = Word <FONT COLOR=#115511>"Here"</FONT>      F:next T:MatchOk <FONT COLOR=#1111CC># EOF Here, Fail Here</FONT>
+        <FONT COLOR=#115511>'arg'</FONT> = Word <FONT COLOR=#115511>"ToEOF"</FONT>     F:next T:MatchOk <FONT COLOR=#1111CC># Move ToEOF</FONT>
+        <FONT COLOR=#115511>'arg'</FONT> = Word <FONT COLOR=#115511>"To"</FONT>        F:next T:MatchOk <FONT COLOR=#1111CC># Jump To</FONT>
+        <FONT COLOR=#115511>'arg'</FONT> = Word <FONT COLOR=#115511>"ThisTable"</FONT> F:next T:MatchOk <FONT COLOR=#1111CC># [Sub]Table ThisTable</FONT>
+        <FONT COLOR=#115511>'arg'</FONT> = Word <FONT COLOR=#115511>"back"</FONT>      F:next T:MatchOk <FONT COLOR=#1111CC># Skip back</FONT>
+        <FONT COLOR=#115511>'arg'</FONT> = Word <FONT COLOR=#115511>"Break"</FONT>     F:next T:MatchOk <FONT COLOR=#1111CC># LoopControl Break</FONT>
+        <FONT COLOR=#115511>'arg'</FONT> = Word <FONT COLOR=#115511>"Reset"</FONT>     F:next T:MatchOk <FONT COLOR=#1111CC># LoopControl Reset</FONT>
+        t_string                 F:next T:MatchOk <FONT COLOR=#1111CC># e.g., Word "Fred"</FONT>
+        t_signed_integer         F:next T:MatchOk <FONT COLOR=#1111CC># e.g., Skip -4, Move 3</FONT>
+        t_identifier                              <FONT COLOR=#1111CC># e.g., Table Fred</FONT>
+
+<FONT COLOR=#1111CC># Recognise a plus sign bordered by optional whitespace</FONT>
+t_plus <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'plus'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_opt_whitespace
+        Is <FONT COLOR=#115511>"+"</FONT>
+        t_opt_whitespace
+
+<FONT COLOR=#1111CC># Arguments can contain "+"</FONT>
+t_plus_arg <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'plusarg'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_argument              <FONT COLOR=#1111CC># start with a single argument</FONT>
+        &lt;again&gt;
+        t_plus F:MatchOk        <FONT COLOR=#1111CC># if we have a "+"</FONT>
+        t_argument              <FONT COLOR=#1111CC># then we expect another argument</FONT>
+        Jump To &lt;again&gt;         <FONT COLOR=#1111CC># then look for another "+"</FONT>
+
+<FONT COLOR=#1111CC># Match, for example:</FONT>
+<FONT COLOR=#1111CC>#        &lt;fred&gt;</FONT>
+t_label <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'label'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        Is <FONT COLOR=#115511>"&lt;"</FONT>
+        t_identifier
+        Is <FONT COLOR=#115511>"&gt;"</FONT>
+
+<FONT COLOR=#1111CC># Targets for Jump and F:/T:</FONT>
+t_target <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'target'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        <FONT COLOR=#115511>'tgt'</FONT> = Word <FONT COLOR=#115511>"next"</FONT>      F:next T:MatchOk
+        <FONT COLOR=#115511>'tgt'</FONT> = Word <FONT COLOR=#115511>"previous"</FONT>  F:next T:MatchOk
+        <FONT COLOR=#115511>'tgt'</FONT> = Word <FONT COLOR=#115511>"repeat"</FONT>    F:next T:MatchOk
+        <FONT COLOR=#115511>'tgt'</FONT> = Word <FONT COLOR=#115511>"MatchOk"</FONT>   F:next T:MatchOk
+        <FONT COLOR=#115511>'tgt'</FONT> = Word <FONT COLOR=#115511>"MatchOK"</FONT>   F:next T:MatchOk <FONT COLOR=#1111CC># for kindness' sake</FONT>
+        <FONT COLOR=#115511>'tgt'</FONT> = Word <FONT COLOR=#115511>"MatchFail"</FONT> F:next T:MatchOk
+        t_label
+
+<FONT COLOR=#1111CC># A value is either an identifier, or a string, or an integer</FONT>
+t_value <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'val'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_identifier F:next T:MatchOk
+        t_string     F:next T:MatchOk
+        t_integer
+
+<FONT COLOR=#1111CC># An assignment is (optionally) used in Tuple and Table definitions...</FONT>
+t_assignment <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'assignment'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_value
+        t_opt_whitespace
+        Is <FONT COLOR=#115511>'='</FONT>
+
+<FONT COLOR=#1111CC># A common error when writing tuples is to miss off the "=" sign</FONT>
+<FONT COLOR=#1111CC># - the following is used in diagnosing that (see t_bad_tuple below)</FONT>
+<FONT COLOR=#1111CC># (it's useful to have something with identical structure to the</FONT>
+<FONT COLOR=#1111CC>#  "real thing")</FONT>
+t_bad_tagobj <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'tagobj'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_string
+
+t_bad_assignment <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'assignment'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_value
+
+<FONT COLOR=#1111CC># This is the line that starts the definition of a single tuple.</FONT>
+<FONT COLOR=#1111CC># For the moment, restrict what it gets assigned to to a simple</FONT>
+<FONT COLOR=#1111CC># identifier.</FONT>
+<FONT COLOR=#1111CC># Match, for example:</FONT>
+<FONT COLOR=#1111CC>#        Fred is:</FONT>
+t_tupleblock <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'tupleblock'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_identifier
+        t_whitespace
+        Word <FONT COLOR=#115511>"is:"</FONT>
+
+<FONT COLOR=#1111CC># This is the line that starts a new table or sub-table.</FONT>
+<FONT COLOR=#1111CC># For the moment, we only cope with full Tables.</FONT>
+<FONT COLOR=#1111CC># NOTE that this is used for the "outer" declaration of a tag table,</FONT>
+<FONT COLOR=#1111CC># and also for the "inner" declaration of an inner table or sub-table.</FONT>
+<FONT COLOR=#1111CC># The discrimination between these is done after initial parsing.</FONT>
+<FONT COLOR=#1111CC># Match, for example:</FONT>
+<FONT COLOR=#1111CC>#        'keyword' = Table is:      (inner)</FONT>
+<FONT COLOR=#1111CC>#        tagtable = Table is:       (outer)</FONT>
+t_tableblock <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'tableblock'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_assignment:  <FONT COLOR=#1111CC># left hand side is optional</FONT>
+            t_opt_whitespace
+        <FONT COLOR=#115511>'type'</FONT> = Word <FONT COLOR=#115511>"Table"</FONT> F:next T:&lt;ok&gt;  <FONT COLOR=#1111CC># Either "Table"</FONT>
+        <FONT COLOR=#115511>'type'</FONT> = Word <FONT COLOR=#115511>"SubTable"</FONT>             <FONT COLOR=#1111CC># or "SubTable"</FONT>
+        &lt;ok&gt;
+        t_whitespace   <FONT COLOR=#1111CC># whitespace is required</FONT>
+        Word <FONT COLOR=#115511>"is:"</FONT>     <FONT COLOR=#1111CC># "is:" is required</FONT>
+
+<FONT COLOR=#1111CC># This is the line that starts an "if" block</FONT>
+<FONT COLOR=#1111CC># Match, for example:</FONT>
+<FONT COLOR=#1111CC>#        Is "Fred":</FONT>
+<FONT COLOR=#1111CC>#        controlsymbol:</FONT>
+t_ifblock <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'ifblock'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_assignment:     <FONT COLOR=#1111CC># left hand side is optional</FONT>
+            t_opt_whitespace
+        t_operation:
+            t_whitespace
+            t_plus_arg
+            Is <FONT COLOR=#115511>":"</FONT> F:MatchFail T:MatchOk
+        <FONT COLOR=#1111CC># Else:</FONT>
+        t_identifier
+        Is <FONT COLOR=#115511>":"</FONT>
+
+<FONT COLOR=#1111CC># Note that we don't allow spaces WITHIN our false and true thingies</FONT>
+t_onfalse <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'onfalse'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_whitespace
+        Word <FONT COLOR=#115511>"F:"</FONT>
+        t_target
+
+t_ontrue <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'ontrue'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_whitespace
+        Word <FONT COLOR=#115511>"T:"</FONT>
+        t_target
+
+<FONT COLOR=#1111CC># Valid examples are things like:</FONT>
+<FONT COLOR=#1111CC>#        'fred' = Is "xxx" F:&lt;wow&gt; T:MatchOk</FONT>
+<FONT COLOR=#1111CC>#       AllIn jim T:&lt;foundJim&gt;</FONT>
+<FONT COLOR=#1111CC>#</FONT>
+<FONT COLOR=#1111CC># For the moment, we're not trying to recognise things in any detail</FONT>
+t_tuple <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'tuple'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_assignment:                 <FONT COLOR=#1111CC># left hand side is optional</FONT>
+            t_opt_whitespace
+        t_operation                   <FONT COLOR=#1111CC># operation is required</FONT>
+        t_whitespace                  <FONT COLOR=#1111CC># for now, always require space here</FONT>
+        t_plus_arg                    <FONT COLOR=#1111CC># argument is required</FONT>
+        t_onfalse F:next    T:next    <FONT COLOR=#1111CC># F:target is optional</FONT>
+        t_ontrue  F:MatchOk T:MatchOk <FONT COLOR=#1111CC># T:target is also optional</FONT>
+
+<FONT COLOR=#1111CC># If the user has defined a "partial" tuple, they might use something</FONT>
+<FONT COLOR=#1111CC># of the form:</FONT>
+<FONT COLOR=#1111CC>#       match_fred  F:MatchFalse T:MatchOk</FONT>
+t_tupleplus <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'tupleplus'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_identifier
+        t_onfalse F:next    T:next    <FONT COLOR=#1111CC># F:target is optional</FONT>
+        t_ontrue  F:MatchOk T:MatchOk <FONT COLOR=#1111CC># T:target is also optional</FONT>
+
+<FONT COLOR=#1111CC># Treat Jump To specially - for example:</FONT>
+<FONT COLOR=#1111CC>#       Jump To &lt;top&gt;</FONT>
+<FONT COLOR=#1111CC># so that they don't have to do the less obvious "Jump To F:&lt;label&gt;"</FONT>
+<FONT COLOR=#1111CC># (although that will still be recognised, of course, for people who</FONT>
+<FONT COLOR=#1111CC># are used to the tag tuple format itself)</FONT>
+t_jumpto <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'jumpto'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        Word <FONT COLOR=#115511>"Jump"</FONT>
+        t_whitespace
+        Word <FONT COLOR=#115511>"To"</FONT>
+        t_whitespace
+        t_target
+
+<FONT COLOR=#1111CC># Is it worth coping with these?</FONT>
+t_bad_jumpto <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'jumpto'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        Word <FONT COLOR=#115511>"Jump"</FONT>:                  <FONT COLOR=#1111CC># cope with "Jump to"</FONT>
+            t_whitespace
+            Word <FONT COLOR=#115511>"to"</FONT> T:&lt;target&gt;
+        Word <FONT COLOR=#115511>"JumpTo"</FONT>                 <FONT COLOR=#1111CC># and with "JumpTo"</FONT>
+        &lt;target&gt;
+        t_target
+
+<FONT COLOR=#1111CC># The "content" of a line is the bit after any indentation, and before</FONT>
+<FONT COLOR=#1111CC># any comment...</FONT>
+<FONT COLOR=#1111CC># For the moment, we won't try to maintain ANY context, so it is up</FONT>
+<FONT COLOR=#1111CC># to the user of the tuples produced to see if they make sense...</FONT>
+t_content <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'content'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_label        F:next T:MatchOk
+        t_tableblock   F:next T:MatchOk        <FONT COLOR=#1111CC># [&lt;tagobj&gt; =] [Sub]Table is:</FONT>
+        t_tupleblock   F:next T:MatchOk        <FONT COLOR=#1111CC># &lt;identifier&gt; is:</FONT>
+        t_ifblock      F:next T:MatchOk        <FONT COLOR=#1111CC># &lt;cmd&gt; &lt;arg&gt;: OR &lt;identifier&gt;:</FONT>
+        t_jumpto       F:next T:MatchOk        <FONT COLOR=#1111CC># Jump To &lt;target&gt;</FONT>
+        t_tuple        F:next T:MatchOk
+        t_tupleplus    F:next T:MatchOk        <FONT COLOR=#1111CC># name [F:&lt;label&gt; [T:&lt;label&gt;]]</FONT>
+
+t_contentline <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'contentline'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_content                    <FONT COLOR=#1111CC># something that we care about</FONT>
+        t_opt_whitespace
+        t_comment F:next T:next      <FONT COLOR=#1111CC># always allow a comment</FONT>
+        IsIn newline                 <FONT COLOR=#1111CC># the end of the line</FONT>
+
+<FONT COLOR=#1111CC># Sometimes, the user (e.g., me) writes:</FONT>
+<FONT COLOR=#1111CC>#	'fred' = Table:</FONT>
+<FONT COLOR=#1111CC># instead of:</FONT>
+<FONT COLOR=#1111CC>#	'fred' = Table is:</FONT>
+<FONT COLOR=#1111CC># Unfortunately, without the "is", it would get too confusing whether</FONT>
+<FONT COLOR=#1111CC># we actually wanted an if block...</FONT>
+t_bad_tableblock <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'tableblock'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_assignment:     <FONT COLOR=#1111CC># left hand side is optional</FONT>
+            t_opt_whitespace
+        Word <FONT COLOR=#115511>"Table"</FONT>      <FONT COLOR=#1111CC># "Table" is required</FONT>
+        Is <FONT COLOR=#115511>":"</FONT>            <FONT COLOR=#1111CC># "is" is needed before the ":"</FONT>
+
+<FONT COLOR=#1111CC># Sometimes, the use (e.g., me again) write:</FONT>
+<FONT COLOR=#1111CC>#	'fred' IsIn jim</FONT>
+<FONT COLOR=#1111CC># instead of:</FONT>
+<FONT COLOR=#1111CC>#	'fred' = IsIn jim</FONT>
+<FONT COLOR=#1111CC># Whilst I'm not entirely convinced that "=" is the best character</FONT>
+<FONT COLOR=#1111CC># to use here, I think we do need something!</FONT>
+t_bad_tuple <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'tuple'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_bad_assignment  <FONT COLOR=#1111CC># obviously we have to have this!</FONT>
+        t_whitespace      <FONT COLOR=#1111CC># in which case the whitespace IS needed</FONT>
+        t_operation       <FONT COLOR=#1111CC># operation is required</FONT>
+        t_whitespace      <FONT COLOR=#1111CC># for the moment, we must have space here</FONT>
+        t_plus_arg        <FONT COLOR=#1111CC># argument is required</FONT>
+        t_onfalse F:next    T:next     <FONT COLOR=#1111CC># F:target is optional</FONT>
+        t_ontrue  F:MatchOk T:MatchOk  <FONT COLOR=#1111CC># T:target is also optional</FONT>
+
+<FONT COLOR=#1111CC># Make some attempt to recognise common errors...</FONT>
+t_badcontent <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'badcontent'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_bad_tableblock F:next T:MatchOk
+        t_bad_tuple
+
+t_badline <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'badline'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_badcontent            <FONT COLOR=#1111CC># something that we sort of care about</FONT>
+        t_opt_whitespace
+        t_comment F:next T:next <FONT COLOR=#1111CC># always allow a comment</FONT>
+        IsIn newline            <FONT COLOR=#1111CC># the end of the line</FONT>
+
+t_emptyline <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'emptyline'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_opt_whitespace
+        IsIn newline               <FONT COLOR=#1111CC># the end of the line</FONT>
+
+t_commentline <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'commentline'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_comment
+        IsIn newline               <FONT COLOR=#1111CC># the end of the line</FONT>
+
+t_passthruline <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'passthruline'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        <FONT COLOR=#115511>'passthru'</FONT> = AllNotIn newline F:next <FONT COLOR=#1111CC># anything else on the line</FONT>
+        IsIn newline                         <FONT COLOR=#1111CC># the end of the line</FONT>
+
+<FONT COLOR=#1111CC># Basically, a file is a series of lines</FONT>
+t_line <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'line'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_emptyline   F:next T:MatchOk  <FONT COLOR=#1111CC># empty lines are simple enough</FONT>
+        t_indent      F:next T:next     <FONT COLOR=#1111CC># optional indentation</FONT>
+        t_commentline F:next T:MatchOk  <FONT COLOR=#1111CC># always allow a comment</FONT>
+        t_contentline F:next T:MatchOk  <FONT COLOR=#1111CC># a line we care about</FONT>
+        t_badline     F:next T:MatchOk  <FONT COLOR=#1111CC># a line we think is wrong</FONT>
+        t_passthruline                  <FONT COLOR=#1111CC># a line we don't care about</FONT>
+
+<FONT COLOR=#1111CC># So read lines until we find the EOF</FONT>
+t_file = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+    t_line
+    EOF Here F:previous
+
+
+<FONT COLOR=#1111CC># ----------------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>if</B></FONT> __name__ == <FONT COLOR=#115511>'__main__'</FONT>:
+
+    test_data = <FONT COLOR=#115511>"#Test data\n"</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" print_tuples"><FONT COLOR=#CC0000><B> print_tuples</B></FONT>(tuplist):
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"("</FONT>
+        <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> tuplist:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>" "</FONT>,item
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>")"</FONT>
+
+    lines = string.split(test_data,<FONT COLOR=#115511>"\n"</FONT>)
+    count = 0
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Test data"</FONT>
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"---------"</FONT>
+    <FONT COLOR=#3333CC><B>for</B></FONT> line <FONT COLOR=#3333CC><B>in</B></FONT> lines:
+        count = count+1
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%2d: %s"</FONT>%(count,line)
+    <FONT COLOR=#3333CC><B>print</B></FONT>
+
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Tagging text"</FONT>
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"------------"</FONT>
+
+    PYTAG = 0
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> PYTAG:
+        <FONT COLOR=#3333CC><B>import</B></FONT> pytag
+        pytag.set_verbosity(1)
+        pytag.use_debugger()
+        result,taglist,next = pytag.pytag(test_data,t_file)
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        timer = TextTools._timer()
+        timer.start()
+        result, taglist, next = tag(test_data,t_file)
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Tagging took"</FONT>,timer.stop()[0],<FONT COLOR=#115511>"seconds"</FONT>
+
+
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Result: "</FONT>,result
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Taglist:"</FONT>
+    print_tuples(taglist)
+</PRE>
+		  <!--footer-->
+		  </BODY>

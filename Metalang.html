@@ -1,0 +1,1165 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> 
+<head>
+<title>A proposed meta-language for use with mxTextTools</title>
+</head>
+
+<body>
+<h1>A proposed meta-language for use with mxTextTools</h1>
+
+<p align="right"><em>Version 0.3 (tiepin) of 1999-11-15</em></p>
+<hr>
+
+<h2><a name="contents">Contents</a></h2>
+
+<ul>
+  <li><a href="#Introduction">Introduction</a>
+  <li><a href="#General aims">General aims</a>
+  <li><a href="#Basic description">Basic description</a>
+  <li><a href="#Download and usage">Download and usage</a>
+  <li><a href="#More details">Metalanguage summaries</a>
+  <li><a href="#Restrictions">Limitations and Restrictions</a>
+  <li><a href="#Still to do">Still to do</a>
+  <li><a href="#Examples">Examples</a>
+</ul>
+
+<hr>
+
+<h2><a name="Introduction">Introduction</a></h2>
+<p>Marc-Andr&eacute; Lemburg provides
+<a href="http://starship.python.net/crew/lemburg/mxTextTools.html">mxTextTools</a>, 
+a package of fast text manipulation tools for use with
+<a href="http://www.python.org/">Python</a>. The tagging engine within that
+package takes as input a set of tuples, the Tag Table, which tells it what to
+do. Although simple in format, these tuples aren't particularly readable, and
+indeed Marc-Andr&eacute; himself says:
+
+<blockquote>
+<p>"I admit, these tables don't look very elegant. In fact I would much rather
+write them in some meta language that gets compiled into these tables instead
+of handcoding them. But I've never had time to do much research into this, so
+unless someone volunteers, it will stay like this for some time."
+</blockquote>
+
+<p>The following describes my implementation of a simple language which can be
+used to represent mxTextTools tag tables, which I believe to be
+easier to read and write than the underlying tuples, and which is transformable
+into said tuples by simple textual manipulations.
+
+<p><em>Note that the implementation is not yet complete, and whilst it is now
+possible to write all of the parsing I need for the translator in the
+language, there are still tuples that it is not possible to represent.</em>
+
+<p>One outstanding matter is to decide on an extension for the text files
+which contain examples of this little language. For the moment, I'm using
+"<tt>.tag</tt>", although I can't help feeling that's probably used for other
+purposes elsewhere. "<tt>.mal</tt>" did occur to me, but is perhaps too
+obscure. "<tt>.mxtext</tt>" or "<tt>.mxtag</tt>" might have been better
+solutions, but are perhaps a bit overlong...
+
+<p align="right">Back to <a href="#contents">Contents</a>
+<hr>
+<!--
+
+-->
+<h2><a name="General aims">General aims</a></h2>
+<p>Informally, my aims are:
+<ul>
+  <li>The format should be easier to read and write than the underlying tuples
+      (otherwise there's little point in this exercise). Of course, this is
+      to some extent a personal judgement.
+  <li>Generally, using ideas from Python is a Good Thing, since that means
+      that users have less to learn. Specifically, I've adopted indentation to
+      indicate "blocks", and colons as a useful "is defined as" tag.
+  <li>Having [X]Emacs Python mode able to do useful things with the language
+      (specifically, handle indentation the way I want, and also colourise the
+      text usefully) is a Good Thing to aim for. With luck, this may mean that
+      other Python editors also cope well with it, e.g., PythonWin and IDLE.
+  <li>I have aimed for a simple textual transformation from language to tag
+      table - this means that the language should be able to cope with
+      anything new added to mxTextTools over time, and also means that it is
+      simpler to implement.
+  <li>Whilst the ability to handle 100% of the tables that might be generated
+      for use with mxTextTools would be very nice, I'll still be reasonably
+      satisfied if the "normal" usages (i.e., those needed 99.9% of the time)
+      are catered for, with complex or odd cases requiring hand-coding of tag
+      tables.
+</ul>
+
+<p align="right">Back to <a href="#contents">Contents</a>
+<hr>
+<!--
+
+-->
+<h2><a name="Basic description">Basic description</a></h2>
+
+<p>For obvious reasons, I'm going to assume that you already understand how to
+write mxTextTools tag tables. This means that we can dive straight in with the
+first example from the <a
+href="http://starship.python.net/crew/lemburg/mxTextTools.html">mxTextTool homepage</a>:
+<table>
+  <font color="#000066">
+<pre>
+    tag_table = (('lowercase',AllIn,a2z,+1,+2),
+                 ('upper',AllIn,A2Z,+1),
+                 (None,AllIn,white+newline,+1),
+                 (None,AllNotIn,alpha+white+newline,+1),
+                 (None,EOF,Here,-4)) # EOF 
+  </pre>
+</font>
+</table>
+<br>which translates to:
+<table>
+  <font color="#000066">
+<pre>
+    tag_table = Table is:
+        &lt;top&gt;
+        'lowercase' = AllIn a2z F:next T:&lt;ignore&gt;
+        'upper' = AllIn A2Z F:next
+        &lt;ignore&gt;
+        AllIn white+newline F:next
+        AllNotIn alpha+white+newline F:next
+        EOF Here F:&lt;top&gt;
+  </pre>
+</font>
+</table>
+
+<p>The first line indicates that we are producing a tag table (as opposed to an
+individual tuple - this will be discussed later on) and assigning it to
+<code>tag_table</code>. The use of "<code>is:</code>" to delimit the start of a
+new block scope (i.e., a new table or tuple) seems to me to make it clearer
+what is going on, and the colon has the added advantage of meaning "new block"
+in Python as well (which also means that Python mode handles the subsequent
+indentation rather nicely).
+
+<p>The "<tt>&lt;top&gt;</tt>" is a label. I wanted to get rid of the "on
+success go to the tuple at position +5" sort of logic from the tag
+tables, since this is (a)&nbsp;difficult to work out, and (b)&nbsp;prone to
+error if one ever has to add new tuples to the table.
+
+<p>Offsets of plus one, minus one and zero are common enough that they have the
+special keywords <tt>next</tt>, <tt>previous</tt> and <tt>repeat</tt> available
+- having to use a label would be overkill in these cases, although it is, of
+course, still possible if the user deems it to be clearer.
+
+<p>(The label goes on a line by itself for the simple reason that
+<table>
+<font color="#000066"><pre>
+        &lt;top&gt; 'lowercase' = AllIn a2z F:next T:&lt;ignore&gt;
+</pre></font>
+</table>
+<br>doesn't look nice when indented.)
+
+<p>The "<tt>F:</tt>" and "<tt>T:</tt>" conditions are translations of the
+<tt>jump_no_match</tt> and <tt>jump_match</tt> elements. Obviously, specifying
+a label means "jump to that label". Be aware that there is no whitespace
+between the "<tt>F:</tt>" or "<tt>T:</tt>" and its target, and that the order
+is required (i.e., the "false" target must come first, if present - this is
+the same ordering as in the underlying tuples).
+
+<p>As our next example, consider:
+<table>
+<font color="#000066"><pre>
+    ctrlsymbol = Table is:
+        Is "'":                             # hexquote
+            IsInSet hex
+            IsInSet hex
+        IsInSet notalpha F:next T:MatchOk   # other
+</pre></font>
+</table>
+<p>The general notation:
+<table>
+<font color="#000066"><pre>
+     &lt;condition&gt;:
+         &lt;suite&gt;
+     &lt;statement&gt;
+</pre></font>
+</table>
+(where <tt>&lt;suite&gt;</tt> is one or more statements) is exactly equivalent
+to:
+<table>
+<font color="#000066"><pre>
+     &lt;condition&gt; F:&lt;labelN&gt; [T:next]
+         &lt;suite&gt;
+     &lt;labelN&gt;
+     &lt;statement&gt;
+</pre></font>
+</table>
+
+<p>and is the preferred notation for that form. Note that technically there is
+absolutely no reason not to have labels in the <tt>&lt;suite&gt;</tt> which are
+jumped to from outside the <tt>&lt;suite&gt;</tt> (or vice versa) - an 'if'
+block does not introduce a new scope. However, such usage may make it harder to
+read the code, so think carefully before introducing it.
+
+<p>Sometimes it is useful to define a single tuple by itself - for instance:
+<table>
+<font color="#000066"><pre>
+    whitespace = (None,AllIn,' \t')
+    opt_whitespace = whitespace + (MatchOk,)
+</pre></font>
+</table>
+<br>This can be represented as follows:
+<table>
+<font color="#000066"><pre>
+    whitespace is:
+        AllIn ' \t'
+    opt_whitespace is:
+        whitespace F:MatchOk
+</pre></font>
+</table>
+
+<p>I find that this form is most commonly used for introducing tables that are
+used in more than one place (or conveniently separated out for clarity) - for
+instance:
+<table>
+<font color="#000066"><pre>
+    # Comments are fairly simple
+    t_comment is:
+        'comment' = Table is:
+            Is '#'
+            AllNotIn '\n\r' F:MatchOk
+</pre></font>
+</table>
+
+<p>To illustrate most of the forms which can be used, here is a rather silly
+example:
+
+<p><table border="1" align="center">
+  <tr>
+    <td><font size="+1"><strong>The meta language</strong></font></td>
+    <td><font size="+1"><strong>The translation</strong></font></td>
+  </tr>
+  <tr valign="top">
+  <td>
+      <!-- **************************************** -->
+<PRE>
+<FONT COLOR=#1111CC># -*-python-*-</FONT>
+<FONT COLOR=#3333CC><B>from</B></FONT> TextTools <FONT COLOR=#3333CC><B>import</B></FONT> *
+
+t_string <FONT COLOR=#3333CC><B>is</B></FONT>:
+    <FONT COLOR=#115511>'str'</FONT> = Word <FONT COLOR=#115511>"string"</FONT>
+
+t_whitespace <FONT COLOR=#3333CC><B>is</B></FONT>:
+    AllIn <FONT COLOR=#115511>' \t'</FONT>
+
+<FONT COLOR=#1111CC># A very silly tag table</FONT>
+<FONT COLOR=#1111CC># Note that the two &lt;label&gt; lines are in different</FONT>
+<FONT COLOR=#1111CC># "scopes" (not a usage I tend to recommend!)</FONT>
+tagtable = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+    &lt;label&gt;
+    Word <FONT COLOR=#115511>"infinite_loop"</FONT> F:next T:repeat
+    Word <FONT COLOR=#115511>"back_to_start"</FONT> F:next T:&lt;label&gt;
+
+    Is <FONT COLOR=#115511>"a"</FONT>:
+        Skip back
+    
+    Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        <FONT COLOR=#115511>'fred'</FONT> = IsIn <FONT COLOR=#115511>"abc"</FONT>:
+            &lt;label&gt;
+            <FONT COLOR=#115511>'jim'</FONT> = Word <FONT COLOR=#115511>"thingy"</FONT> T:MatchOk
+            Word <FONT COLOR=#115511>"bingo"</FONT> F:&lt;label&gt;
+        <FONT COLOR=#115511>'fred'</FONT> = IsIn <FONT COLOR=#115511>"b"</FONT>
+
+
+    <FONT COLOR=#115511>'table'</FONT> = Table <FONT COLOR=#3333CC><B>is</B></FONT>:
+        t_string:
+            t_whitespace
+            t_string
+</PRE>
+      <!-- **************************************** -->
+  </td>
+  <td>
+      <!-- **************************************** -->
+<PRE>
+<FONT COLOR=#1111CC># -*-python-*-</FONT>
+<FONT COLOR=#3333CC><B>from</B></FONT> TextTools <FONT COLOR=#3333CC><B>import</B></FONT> *
+
+t_string = \
+    (<FONT COLOR=#115511>'str'</FONT>,Word,<FONT COLOR=#115511>"string"</FONT>)
+
+t_whitespace = \
+    (None,AllIn,<FONT COLOR=#115511>' \t'</FONT>)
+
+<FONT COLOR=#1111CC># A very silly tag table</FONT>
+<FONT COLOR=#1111CC># Note that the two &lt;label&gt; lines are in different</FONT>
+<FONT COLOR=#1111CC># "scopes" (not a usage I tend to recommend!)</FONT>
+tagtable = (
+    <FONT COLOR=#1111CC># &lt;label&gt;</FONT>
+    (None,Word,<FONT COLOR=#115511>"infinite_loop"</FONT>,+1,0),
+    (None,Word,<FONT COLOR=#115511>"back_to_start"</FONT>,+1,-1),
+
+    (None,Is,<FONT COLOR=#115511>"a"</FONT>,+2,+1),
+        (None,Skip,-1),
+
+    (None,Table,(
+        (<FONT COLOR=#115511>'fred'</FONT>,IsIn,<FONT COLOR=#115511>"abc"</FONT>,+3,+1),
+            <FONT COLOR=#1111CC># &lt;label&gt;</FONT>
+            (<FONT COLOR=#115511>'jim'</FONT>,Word,<FONT COLOR=#115511>"thingy"</FONT>,MatchFail,MatchOk),
+            (None,Word,<FONT COLOR=#115511>"bingo"</FONT>,-1),
+        (<FONT COLOR=#115511>'fred'</FONT>,IsIn,<FONT COLOR=#115511>"b"</FONT>),
+    )),
+
+    (<FONT COLOR=#115511>'table'</FONT>,Table,(
+        t_string + (+3,+1),
+            t_whitespace,
+            t_string,
+    )),
+)
+</PRE>
+      <!-- **************************************** -->
+  </td>
+</tr>
+</table>
+
+<p align="right">Back to <a href="#contents">Contents</a>
+<hr>
+<!--
+
+-->
+<h2><a name="Download and usage">Download and usage</a></h2>
+
+<h3>Download</h3>
+<p>The following are available for download:
+<ul>
+  <li><a href="Translate.py">Translate.py</a>
+      (or see it <a href="Translate.py.html">colourised with py2html</a>)
+      <br>This is the actual module we are discussing.
+
+  <li><a href="Translate_tags.tag">Translate_tags.tag</a>
+      (or see it <a href="Translate_tags.tag.html">colourised with
+      py2html</a>, and here is the <a href="Translate_tags.py">translation into
+      Python</a>, also available <a href="Translate_tags.py.html">colourised</a>
+      <br>This is the tag definitions used within Translate.py, back translated
+      into the metalanguage, suitable for translation (with Translate.py,
+      of course) into a <code>.py</code> file which can be imported by
+      Translate.py (if the <code>-import</code> switch is chosen) for use as
+      tag definitions for translating the metalanguage. I think that makes
+      sense...
+</ul>
+
+<p>You will also require
+<a href="http://starship.python.net/crew/lemburg/mxTextTools.html">mxTextTools v1.1.1 or later</a>.
+
+<h3>Usage</h3>
+<p>The Translate module provides a class <bf>File</bf> which may be used to
+translate a tag table (parsed using the table <bf>t_file</bf> which is defined
+in Translate_tags.tag) into a text file. An example of its use is available in
+the <code>main()</code> function in Translate.py.
+
+<p>Used as a command line program, Translate.py can be used to translate tag
+tables written in the metalanguage into straight Python files. Its normal usage
+is explained by invoking the "<code>-help</code>" switch:
+<table align="center">
+<pre>
+Usage: Translate [switches] &lt;infile&gt; [&lt;outfile&gt;]
+
+        -stdout         -- write to standard output instead of a file
+        -force          -- write to the &lt;outfile&gt; even if it already
+                           exists (overwrite any existing file)
+
+        -import         -- import tag table from Translate_tags.py,
+                           instead of using the internal table
+
+        -compare        -- compare the imported and internal tag tables
+                           (development option!)
+
+        -test           -- use our internal test data and write to stdout
+        -pytag          -- use the interpreted tagging engine
+        -debug          -- if -pytag, enable its debugger
+        -diag           -- enable general debugging
+                           Beware that this currently also writes line
+                           numbers to the start of each line in the output,
+                           so it doesn't emit legal Python...
+
+        -help           -- show this text
+        -history        -- show the module history
+        -version        -- show the module version
+
+If &lt;outfile&gt; is not specified, &lt;infile&gt; will be used with its extension
+replaced by ".py".
+</pre>
+</table>
+
+<p>The <code>-import</code> switch is used to prove that the translator can
+indeed "bootstrap" itself, and will become the normal mode of operation in the
+next release.
+  
+<h3>Python code</h3>
+<p>The translator attempts to determine which code
+"belongs" to it, and should thus be translated, and which code is Python
+code and should thus be transmitted untouched. This is so that one can
+do useful things like:
+<table>
+  <font color="#000066"><pre>
+    chars = "abcdef"
+    if morechars:
+        chars = chars + "ABCDEF"
+  </pre></font>
+</table>
+
+<p>It also has the advantage of allowing one to mix tag tables with normal
+Python code, as one might naturally do if one were programming the tag
+tuples directly. Of course, it is <em>slightly</em> dangerous, as is any
+preprocessing of a file with mixed terminologies, and I don't guarantee
+to accept more than a subset of proper Python code within the final
+version of the translator.
+
+<p>(NB: random code is <em>not</em> allowed within tag tables
+themselves - it will be detected and commented out, with an appropriate
+error message.)
+
+<h3>Appearance of the output</h3>
+<p>The output retains the indentation of the input, even though this may not
+conform (for instance) to the indentation that [X]Emacs Python mode would
+produce. This is mainly to make the equivalence of metalanguage and translation
+more obvious, which also aids in diagnosis of any translation problems.
+
+<p>Note that a comma is output after each entry within a tag table tuple,
+including the final entry - this follows the normal "safe" convention when
+writing lists, but can optionally be changed by changing the value of the
+variable <code>WANT_LAST_COMMA</code> in Translate.py (I would note that one of
+the major benefits of the language <em>to me</em> is that one does not
+need to remember those trailing commas after each tuple - leaving them
+out results in unobvious errors!).
+
+<p>When closing parentheses are written at the end of a table, they are
+written to a line by themselves, indented to match the indentation of the
+start of the tuple. This introduces an "extra" line (i.e., a line that does not
+correspond to anything in the input tag data), but on the whole seems clearer
+than writing extra parentheses to the preceding line.
+
+<p>Inline comments are retained and output. By default they are output at
+column 40 (variable <code>COMMENT_COLUMN</code> in Translate.py), unless there
+is already text there. This gives some chance that they will line up, but
+obviously I'm not going to try too hard. Future versions of the translator may
+make this more customisable.
+
+<p>The "end of line" character is output as <code>"\n"</code>, and the
+output is opened in text mode, so the result will depend on the platform
+being used.
+
+<h3>Error correction</h3>
+<p>Some attempt is made to cope with "common errors" (read: "things I find
+myself doing wrong too frequently"). Specifically:
+
+<dl>
+  <dt><strong>Target <code>MatchOK</code></strong>
+  <dd>The target "<code>MatchOk</code>" has a lower case letter at the end. I
+      can see that this might be a pitfall, so the erroneous target
+      "<code>MatchOK</code>" will generate a message, but will otherwise
+      be treated as if it were spelt correctly.
+
+      <p><!-- yuck -->
+      
+  <dt><strong>Missing "<code>=</code>" in table block</strong>
+  <dd>I've been known to write:
+      <table>
+	<font color="#000066"><pre>
+        'fred' IsIn jim
+	</pre></font>
+      </table>
+      <br>instead of:
+	<table>
+	  <font color="#000066"><pre>
+        'fred' = IsIn jim
+	  </pre></font>
+      </table>
+
+      <p>If the translator finds the former situation (and note that the tag
+      object is optional, as normal), it will output an appropriate error
+      message, but continue as if the "correct" code had been found.
+
+      <p>Note that whilst I'm not entirely convinced that "<code>=</code>" is
+      the best character to use here, I do feel the need for a delimiter here,
+      and if one reads the normal Python "<code>=</code>" as "references",
+      then one should read this operator as "tags".     
+
+  <dt><strong>Missing "<code>is</code>" before colon</strong>
+  <dd>I've been known to write:
+      <table>
+	<font color="#000066"><pre>
+        'fred' = Table:
+	</pre></font>
+      </table>
+      <br>instead of:
+      <table>
+	<font color="#000066"><pre>
+        'fred' = Table is:
+	</pre></font>
+      </table>
+
+      <p>If the translator finds the former situation (and note that the tag
+      object is optional, as normal), it will output an appropriate error
+      message, but continue as if the "correct" code had been found.
+
+      <p>Note that the "<code>is</code>" is required to
+      distinguish a table definition visually from an if block - basically,
+      "<code>is:</code> translates as "start a new tuple" whereas a bare
+      "<code>:</code>" means "start an if block".
+</dl>
+
+<p align="right">Back to <a href="#contents">Contents</a>
+<hr>
+<!--
+
+-->
+<h2><a name="More details">Metalanguage summaries</a></h2>
+
+<p>The following table gives a brief summary of how the metalanguage works:
+<p><TABLE BORDER="1">
+  <TR valign="top">
+  <TD><B>"Tuple" representation</B></TD>
+  <TD><B>Metalanguage representation</B></TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>tag_table = (<em>tuples</em>)</code></TD>
+    <TD><code>tag_table = Table is:</code>
+	<br>&nbsp;&nbsp;&nbsp;&nbsp;<em>tuples</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(tagobj,<em>command</em>,<em>argument</em>,<em>jfalse</em>,<em>jtrue</em>)</code></TD>
+    <TD><code>tagobj = <em>command</em> <em>argument</em> F:<em>..</em> T:<em>..</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(None,<em>command</em>,<em>argument</em>,<em>jfalse</em>,<em>jtrue</em>)</code></TD>
+    <TD><code><em>command</em> <em>argument</em> F:<em>..</em> T:<em>..</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(None,<em>command</em>,<em>argument</em>,<em>jfalse</em>)</code></TD>
+    <TD><code><em>command</em> <em>argument</em> F:<em>..</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(None,command,argument,MatchFail,<em>jtrue</em>)</code></TD>
+    <TD><code><em>command</em> <em>argument</em> T:<em>..</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(None,<em>command</em>,<em>argument</em>)</code></TD>
+    <TD><code><em>command</em> <em>argument</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(None,Jump,To,<em>jfalse</em>)</code></TD>
+    <TD><code>Jump To <em>..</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(tagobj,Table,(<em>tuples</em>))</code></TD>
+    <TD><code>tagobj = Table is:</code>
+	<br>&nbsp;&nbsp;&nbsp;&nbsp;<em>tuples</em>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(None,<em>command</em>,<em>argument</em>,+1,+3),</code>
+	<br><em>tuple1</em>,
+	<br><em>tuple2</em>,
+	<br><em>tuple3</em>,
+    </TD>
+    <TD><code><em>command</em> <em>argument</em> F:next T:&lt;label&gt;</code>
+	<br><em>tuple1</em>
+	<br><em>tuple2</em>
+	<br><code>&lt;label&gt;</code>
+	<br><em>tuple3</em>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD><code>(None,<em>command</em>,<em>argument</em>,+3,+1),</code>
+	<br><em>tuple1</em>,
+	<br><em>tuple2</em>,
+	<br><em>tuple3</em>,
+    </TD>
+    <TD><code><em>command</em> <em>argument</em>:</code>
+	<br>&nbsp;&nbsp;&nbsp;&nbsp;<em>tuple1</em>
+	<br>&nbsp;&nbsp;&nbsp;&nbsp;<em>tuple2</em>
+	<br><em>tuple3</em>
+    </TD>
+  </TR>
+
+</TABLE>
+
+
+<p>The following is an expansion of the "Tagging Commands" table in <a href="http://starship.python.net/crew/lemburg/mxTextTools.html">mxTextTools</a>:
+
+<p><TABLE BORDER="1">
+  <TR valign="top">
+    <TD><B>Command</B></TD>
+    <TD><B>Arguments that go with it</B></TD>
+    <TD><B>Metalanguage representation</B></TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>Fail</TD>
+    <TD>Here</TD>
+    <TD>
+	<code>Fail Here</code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>Jump</TD>
+    <TD>To</TD>
+    <TD>
+	<code>Jump To &lt;label&gt;</code>
+	<br>(although the more 'literal'
+	<code>Jump&nbsp;To&nbsp;F:&lt;label&gt;</code>
+	will also work)
+	
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>AllIn</TD>
+    <TD><em>string</em></TD>
+    <TD>
+	<code>AllIn <em>string</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>AllNotIn</TD>
+    <TD><em>string</em></TD>
+    <TD>
+	<code>AllNotIn <em>string</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>AllInSet</TD>
+    <TD><em>set</em></TD>
+    <TD>
+	<code>AllInSet <em>set</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>Is</TD>
+    <TD><em>character</em></TD>
+    <TD>
+	<code>Is <em>character</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>IsNot</TD>
+    <TD><em>character</em></TD>
+    <TD>
+	<code>IsNot <em>character</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>IsIn</TD>
+    <TD><em>string</em></TD>
+    <TD>
+	<code>IsIn <em>string</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>IsNotIn</TD>
+    <TD><em>string</em></TD>
+    <TD>
+	<code>IsNotIn <em>string</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>IsInSet</TD>
+    <TD><em>set</em></TD>
+    <TD>
+	<code>IsInSet <em>set</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>Word</TD>
+    <TD><em>string</em></TD>
+    <TD>
+	<code>Word <em>string</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>WordStart</TD>
+    <TD><em>string</em></TD>
+    <TD>
+	<code>WordStart <em>string</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>WordEnd</TD>
+    <TD><em>string</em></TD>
+    <TD>
+	<code>WordEnd <em>string</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>sWordStart</TD>
+    <TD><em>search-object</em></TD>
+    <TD>
+	<code>sWordStart <em>search-object</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>sWordEnd</TD>
+    <TD><em>search-object</em></TD>
+    <TD>
+	<code>sWordEnd <em>search-object</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>sFindWord</TD>
+    <TD><em>search-object</em></TD>
+    <TD>
+	<code>sFindWord <em>search-object</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>Call</TD>
+    <TD><em>function</em></TD>
+    <TD>
+	<code>Call <em>function</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>CallArg</TD>
+    <TD>(<em>function</em>,[<em>arg0</em>,...])</TD>
+    <TD>
+	<code>CallArg(<em>function</em>,[<em>arg0</em>,...])</code>
+	<br><em>(not yet available)</em>
+	<br>Note that whitespace around the parentheses is optional.
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>Table</TD>
+    <TD>ThisTable or
+	<br><em>tagtable-name</em> or
+	<br><em>tagtable</em>
+    </TD>
+    <TD>
+	<code>Table ThisTable</code> or
+	<br><code>Table <em>tagtable-name</em></code> or
+	<br>
+	<code>Table is:</code>
+	<br>
+	<code>&nbsp;&nbsp;&nbsp;&nbsp;<em>tagtable</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>SubTable</TD>
+    <TD>ThisTable or
+	<br><em>tagtable-name</em> or
+	<br><em>tagtable</em>
+    </TD>
+    <TD>
+	<code>SubTable ThisTable</code> or
+	<br><code>SubTable <em>tagtable-name</em></code> or
+	<br>
+	<code>SubTable is:</code>
+	<br>
+	<code>&nbsp;&nbsp;&nbsp;&nbsp;<em>tagtable</em></code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>TableInList</TD>
+    <TD>(<em>list_of_tables</em>,<em>index</em>)</TD>
+    <TD>
+	<code>TableInList(<em>list_of_tables</em>,<em>index</em>)</code>
+
+	<p><em>(not yet available)</em>
+	<br>Note that whitespace around the parentheses is optional.
+	<br>It is likely that only table <em>names</em> will be allowed in the
+	list, and not embedded subtables (i.e., <code>[Sub]Table&nbsp;is:</code>).
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>SubTableInList</TD>
+    <TD>(list_of_tables,index)</TD>
+    <TD>
+	<code>SubTableInList (list_of_tables,index)</code> or
+	<br>
+	<code>SubTableInList(list_of_tables,index)</code>
+
+	<p><em>(not yet available)</em>
+	<br>Note that whitespace around the parentheses is optional.
+	<br>It is likely that only table <em>names</em> will be allowed in the
+	list, and not embedded subtables (i.e., <code>[Sub]Table&nbsp;is:</code>).
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>EOF</TD>
+    <TD>Here</TD>
+    <TD>
+	<code>EOF Here</code>
+    </TD>
+  </TR>
+
+  <TR valign="top">
+    <TD>Skip</TD>
+    <TD><em>offset</em></TD>
+    <TD>
+	<code>Skip <em>offset</em></code> or
+	<br>
+	<code>Skip <em>back</em></code> (equivalent to <code>Skip -1</code>)
+    </TD>
+  </TR>
+
+
+  <TR valign="top">
+    <TD>Move</TD>
+    <TD><em>position</em></TD>
+    <TD>
+	<code>Move <em>position</em></code> or
+	<br>
+	<code>Move ToEOF</code>
+    </TD>
+  </TR>
+
+
+  <TR valign="top">
+    <TD>Loop</TD>
+    <TD><em>count</em></TD>
+    <TD>
+	<code>Loop <em>count</em></code>
+    </TD>
+  </TR>
+
+
+  <TR valign="top">
+    <TD>LoopControl</TD>
+    <TD>Break/Reset</TD>
+    <TD>
+	<code>LoopControl Break</code> or
+	<br>
+	<code>LoopControl Reset</code>
+    </TD>
+  </TR>
+
+</TABLE>
+
+<p>Appending flags to the command (as in <code>+&lt;flag&gt;</code>, where
+&lt;flag&gt; is one of <code>CallTag</code>,
+<code>AppendMatch</code>,
+<code>AppendToTagobj</code> or 
+<code>AppendTagobj</code>) is not yet supported.
+
+<!-- <p>to the above, one can then append <em>one</em> flag: -->
+<!-- <pre> -->
+<!--     + &lt;flag&gt; -->
+<!-- </pre> -->
+<!-- <p>where <code>&lt;flag&gt;</code> is one of the following: -->
+
+<!-- <UL> -->
+<!--   <li> CallTag -->
+<!--   <li> AppendMatch -->
+<!--   <li> AppendToTagobj -->
+<!--   <li> AppendTagobj -->
+<!-- </UL> -->
+
+
+<p align="right">Back to <a href="#contents">Contents</a>
+<hr>
+<!--
+
+-->
+<h2><a name="Restrictions">Limitations and Restrictions</a></h2>
+
+<h3>Restrictions</h3>
+<p>These are things that the user must bear in mind, which are not likely to
+change.
+<dl>
+  <dt><strong>Identifiers</strong>
+  <dd>Identifiers follow the normal Python rules (i.e., must start with a
+      letter or underline, and may continue with letters, digits or
+      underlines). Case is significant. Python keywords and mxTextTool commands
+      (e.g., "Word", etc.) are not allowed. Somewhat arbitrarily, things like
+      "Here", "MatchFail" and so on <em>are</em> currently allowed, but this
+      potential ambiguity will likely be removed in a future version (I'm
+      minded to disallow all the mxTextTools "special" words, for simplicity).
+
+  <dt><strong>Labels</strong>
+  <dd>The text within a label (i.e., between <code>&lt;</code> and
+      <code>&gt;</code>) is an identifier, and thus follows the appropriate
+      rules.
+
+  <dt><strong>Indentation</strong>
+  <dd>When calculating indentation, the same assumption is made as within the
+      Python language itself - i.e., that any tabs are to be interpreted as
+      moving to the next multiple of eight (8) spaces. As with normal Python,
+      it is thus recommended not to mix spaces and tabs, just in case.
+
+  <dt><strong>No spaces after <code>T:</code> or <code>F:</code></strong>
+  <dd>This is not a bug, but beware that there is no whitespace between the
+      <code>T:</code> or <code>F:</code> and its target. This is purely
+      because I think it looks better that way. Some future version of the
+      translator may attempt to give a useful error message if the user gets
+      this wrong.
+
+      <p><em>(This is about the only place where I intend to restrict the
+      addition of "non-significant" whitespace. In particular, whitespace
+      around "+" signs is legal, and whitespace before and after "(" and ")"
+      will be allowed when I support function calls, etc.)</em>
+</dl>
+
+<h3><a name="Limitations">Limitations</a></h3>
+<p>These are likely to be resolved in future versions of the translator.
+<dl>
+  <dt><strong>Strings</strong>
+  <dd>Strings are only supported in a simple manner. Specifically:
+      <ul>
+	<li>It is not possible to include a single quote within a single quoted
+	    string, or a double quote within a double quoted string (i.e., you
+	    can do <code>"'"</code>, but not <code>'\''</code> or
+	    <code>"\""</code>).
+
+	<li>There is no support for triple quoted strings.
+
+	<li>String concatenation by adjacency is not supported.
+      </ul>
+      <p>The first two limitations will be removed, probably in the next
+      release of the software. The last probably will not (unless it turns out
+      to be trivial).
+
+  <dt><strong>Line continuation</strong>
+  <dd>The use of "/" to continue a line is not currently supported. Nor are
+      parentheses recognised as introducing automatic line continuation. Thus
+      all tuple definitions must fit on a single line.
+      
+  <dt><strong>Tag objects</strong>
+  <dd>At the moment, tag objects can only be identifiers, strings or
+      (unsigned) integers.
+      <br>Ultimately, most (if not all) object references should be allowable
+      as tag objects (specifically, things like <code>a[b]</code>).
+
+  <dt><strong>Tag table assignment</strong>
+  <dd>For the moment, tag tables (at the outer level) can only be assigned to
+      identifiers. For example:
+      <table>
+	<font color="#000066"><pre>
+        fred = Table is:
+           ...tag table definition...
+       </pre></font>
+      </table>
+      <p>The intention is ultimately to allow any Python entity that would be
+      valid on the left hand side of an assignment (which is, of course, what
+      we generate when we translate the above).
+
+      <p>(<em>Actually</em>, the same parse is applied for "outer" tag tables
+      as for inner, so one could parse an assignment to a string or integer. Of
+      course, Python itself would then grumble later on. A future version of
+      the translator will catch this potential error and grumble.)
+
+  <dt><strong>Commands and arguments</strong>
+  <dd>There is almost no intelligence in dealing with commands and arguments as
+      yet, save that the argument "<code>back</code>" gets translated to
+      "<code>-1</code>" (this is for use with "<code>Skip</code>").
+
+      <p>Arguments may currently be any of the words
+      "<code>Here</code>", "<code>ToEOF</code>", "<code>To</code>",
+      "<code>ThisTable</code>" or
+      "<code>back</code>", or they may be a
+      string, an (unsigned) integer or an identifier.
+
+      <p>It is possible to "add" arguments with "<code>+</code>", so that
+      <code>'abc' + "def"</code> is a legitimate argument (note that this does
+      not apply for "<code>[Sub]Table is:</code>" lines).
+
+      <p>No check is made that any particular argument makes sense with its
+      command.      
+
+  <dt><strong>Exceptions</strong>
+  <dd>There are still a few "error" conditions in translation that result in
+      exceptions. The intention is that these will be removed and replaced by
+      error messages, with the translator continuing "as best it can".
+      
+</dl>
+
+
+<p align="right">Back to <a href="#contents">Contents</a>
+<hr>
+<!--
+
+-->
+<h2><a name="Still to do">Still to do</a></h2>
+
+<p>Some of the following are also mentioned in
+<a href="#Limitations">Limitations</a> above.
+
+<dl>
+  <dt><strong>Handling tables with T/F jumps</strong>
+  <dd>When writing tag tuples directly, it is possible, for example, to do
+      something like:
+      <table>
+	<font color="#000066"><pre>
+        ('fred',Table,(...),+3,MatchFail)
+	</pre></font>
+      </table>
+      <br>where false and true jumps are defined for an embedded Table. This is
+      not currently possible with the metalanguage, because there is no obvious
+      place to put the "<code>F:</code>" and "<code>T:</code>" clauses.
+
+      <p>One might represent this "directly" as:
+      <table>
+	<font color="#000066"><pre>
+	'fred' = Table:
+	    ...
+        F:next T:&lt;target&gt;
+	</pre></font>
+      </table>
+      <br>but this would be breaking the Python convention that there are no
+      block closing keywords (so, of course, Python mode also wouldn't support
+      it, which is a Bad Thing), and anyway it looks really ugly.
+
+      <p>Unfortunately, it looks like the "best" approach is just to move the
+      true/false jumps to the start of the table definition:
+      <table>
+	<font color="#000066"><pre>
+	'fred' = Table F:next T:&lt;target&gt; is:
+	    ...
+	</pre></font>
+      </table>
+
+      <p>I dither a little over whether a little more syntactic sugar would be
+      nice here - for instance:
+      <table>
+	<font color="#000066"><pre>
+	'fred' = Table with F:next T:&lt;target&gt; is:
+	    ...
+	</pre></font>
+      </table>
+      <br>but suspect in the end I'll err on the side of simplicity.
+
+      <p>Note that there is <em>still</em> the issue of what one should do if
+      the conditions are of the form
+      "<code>F:&lt;label&gt;&nbsp;T:next</code>",
+      which would normally be represented as the start of an if block - my
+      inclination is to say at this point "well, that's getting too complex
+      and we just won't cope", but I reserve the right to change my mind later
+      on when I've worried about it a bit more...
+
+  <dt><strong>Modifed [Sub]Table commands</strong>
+  <dd>At the moment, it is possible to have "<code>+</code>" modifications for
+      commands in a 'normal' tuple - for instance:
+      <table>
+	<font color="#000066"><pre>
+        'fred' = Table + CallTag
+	</pre></font>
+      </table>
+      <br>(although mostly by coincidence, if you actually read the tag
+      tables!), but it is not possible to do this in an "embedded" table
+      definition, such as: 
+      <table>
+	<font color="#000066"><pre>
+        Table + CallArg is:
+            ....
+	</pre></font>
+      </table>
+
+  <dt><strong>Function calls</strong>
+  <dd>It is not currently possible to recognised lines which include a function
+      call as the argument to a command - for instance as in the following
+      tuples:
+      <table>
+	<font color="#000066"><pre>
+        'text' = sWordStart BMS('-->') F:next
+        Skip len('</XMP>')
+	</pre></font>
+      </table>
+
+      <br>It is also not possible to translate <code>CallArg</code>,
+      <code>TableInList</code> and <code>SubTableInList</code> for similar
+      reasons.
+
+  <dt><strong>Continuation lines</strong>
+  <dd>It is not possible to continue lines with "<code>/</code>" (as in normal
+      Python).
+
+  <dt><strong>Proper string handling</strong>
+  <dd>Strings with escaped quote characters, and triple-quoted strings, need to
+      be implemented.
+
+  <dt><strong>Additional checking of TuplePlus</strong>
+  <dd>When doing a TuplePlusLine, it would be nice to check if we knew the
+      tuple we're adding to, and if so whether it already (i.e., by mistake)
+      has a <code>F</code> or <code>T</code> condition. This would necessitate
+      keeping a log of Tuples defined (but we couldn't <em>guarantee</em> to
+      recognise a tuple by "name", of course - e.g., given
+      "<code>tuple[3]&nbsp;=&nbsp;...</code>" we would not know what to do if
+      we later referred to that as "<code>tuple[a]</code>".
+
+      <p>Also, if the user does:
+      <table>
+	<font color="#000066"><pre>
+        a = Table is:
+            bbb
+	</pre></font>
+      </table>
+      <br>then it would be nice to check that "<code>bbb</code>" is a tuple (or
+      tupleplus) if possible (this is actually almost the same point).
+
+  <dt><strong>Distinguish assignables</strong>
+  <dd>It would be a Good Thing to distinguish assignables (e.g. for
+      <code>Table</code>s) from tagobjs (i.e., as used in tuples) so we can
+      grumble if the user uses the wrong sort at the wrong time.
+
+      <p>The translator also needs to handle more valid Python targets for both
+      assignment (of tag tables) and also for tag objects. I need to think
+      about exactly how to do this - I don't <em>really</em> want to start
+      having to be able to parse all legitimate Python source code explicitly
+      "by hand".
+</dl>
+
+<p align="right">Back to <a href="#contents">Contents</a>
+<hr>
+<!--
+
+-->
+<h2><a name="Examples">Examples</a></h2>
+
+<p>Finally, I've translated all of the examples from the <tt>Examples</tt>
+directory in the mxTextTools distribution (version&nbsp;1.0.2), with some added
+comments in appropriate places. They can be seen (colourised with py2html)
+<a href="Examples.tag.html">here</a> (or as straight tag table, with no
+colourisation,
+<a href="Examples.tag">here</a>), and the results of translation are <a
+href="Examples.py.html">here</a> (or, again, as unvarnished Python, <a
+href="Examples.py">here</a>).
+
+<p align="right">Back to <a href="#contents">Contents</a>
+<hr>
+<address><p>Author:
+<a href="http://www.tibsnjoan.co.uk/">Tibs</a>
+(<a href="mailto:tibs@tibsnjoan.co.uk"><tt>tibs@tibsnjoan.co.uk</tt></a>)
+</address>
+Last textual change:  Tue Nov 16 09:17:38 GMT Standard Time 1999<br>
+<!-- hhmts start -->
+Last modified: Thu Jun 19 14:33:54 BST 2003
+<!-- hhmts end -->
+</body> 
+</html>

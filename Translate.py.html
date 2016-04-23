@@ -1,0 +1,2484 @@
+<HTML>
+<HEAD><TITLE>Translate.py</TITLE></HEAD>
+		  <BODY BGCOLOR=#FFFFFF>
+		  <!--header-->
+		  <!--script--><PRE>
+<FONT COLOR=#1111CC>#!/bin/env python -d</FONT>
+<FONT COLOR=#1111CC>#!/tools/net/app/Python-1.5.2/bin/python1.5</FONT>
+
+<FONT COLOR=#115511>"""Translate - a first attempt at parsing my little language
+
+Usage: Translate [switches] &lt;infile&gt; [&lt;outfile&gt;]
+
+        -stdout         -- write to standard output instead of a file
+        -force          -- write to the &lt;outfile&gt; even if it already
+                           exists (overwrite any existing file)
+
+        -import         -- import tag table from Translate_tags.py,
+                           instead of using the internal table
+
+        -compare        -- compare the imported and internal tag tables
+                           (development option!)
+
+        -test           -- use our internal test data and write to stdout
+        -pytag          -- use the interpreted tagging engine
+        -debug          -- if -pytag, enable its debugger
+        -diag           -- enable general debugging
+                           Beware that this currently also writes line
+                           numbers to the start of each line in the output,
+                           so it doesn't emit legal Python...
+
+        -help           -- show this text
+        -history        -- show the module history
+        -version        -- show the module version
+
+If &lt;outfile&gt; is not specified, &lt;infile&gt; will be used with its extension
+replaced by ".py".
+"""</FONT>
+
+__author__  = <FONT COLOR=#115511>"""Tibs (Tony J Ibbs)
+tony@lsl.co.uk or tibs@tibsnjoan.co.uk
+http://www.tibsnjoan.co.uk/
+"""</FONT>
+__version__ = <FONT COLOR=#115511>"0.3 (tiepin) of 1999-11-15"</FONT>
+__history__ = <FONT COLOR=#115511>"""\
+Originally created 1999-08-13
+
+First released version is 0.2 (bootstrap)/1999-09-09, which gave
+an idea of how the thing would work, and nearly did.
+
+Second released version is 0.3 (tiepin)/1999-11-15, which is sufficient
+to allow the parser used within this utility to be written in the little
+language, translated and then used as such.
+"""</FONT>
+
+<FONT COLOR=#3333CC><B>import</B></FONT> sys
+<FONT COLOR=#3333CC><B>import</B></FONT> os
+<FONT COLOR=#3333CC><B>import</B></FONT> string
+
+<FONT COLOR=#1111CC># ............................................................</FONT>
+<FONT COLOR=#1111CC># How we want to work things - this is fudge for me in initial development</FONT>
+<FONT COLOR=#3333CC><B>if</B></FONT> os.name == <FONT COLOR=#115511>"posix"</FONT>:
+    <FONT COLOR=#1111CC># Unix at work</FONT>
+    DEFAULT_DEBUG = 0
+    DEFAULT_PYTAG = 0
+<FONT COLOR=#3333CC><B>else</B></FONT>:
+    <FONT COLOR=#1111CC># Windows 95 at home</FONT>
+    TEXTTOOLS_PATH = <FONT COLOR=#115511>"C:\\Program Files\\Python"</FONT>
+    PYTAG_PATH  = <FONT COLOR=#115511>"C:\\Program Files\\Python\\TextTools\\Examples"</FONT>
+    DEFAULT_DEBUG = 0
+    DEFAULT_PYTAG = 0
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> TEXTTOOLS_PATH <FONT COLOR=#3333CC><B>not</B></FONT> <FONT COLOR=#3333CC><B>in</B></FONT> sys.path:
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Adding"</FONT>,TEXTTOOLS_PATH
+        sys.path.append(TEXTTOOLS_PATH)
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> PYTAG_PATH <FONT COLOR=#3333CC><B>not</B></FONT> <FONT COLOR=#3333CC><B>in</B></FONT> sys.path:
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Adding"</FONT>,PYTAG_PATH
+        sys.path.append(PYTAG_PATH)
+<FONT COLOR=#1111CC># ............................................................</FONT>
+
+<FONT COLOR=#1111CC># Import the TextTools themselves</FONT>
+<FONT COLOR=#1111CC># - I'm not personally too keen on import *, but it seems to be</FONT>
+<FONT COLOR=#1111CC>#   the recommended thing, so I'll leave it for now...</FONT>
+<FONT COLOR=#3333CC><B>try</B></FONT>:
+    <FONT COLOR=#3333CC><B>from</B></FONT> TextTools <FONT COLOR=#3333CC><B>import</B></FONT> *
+<FONT COLOR=#3333CC><B>except</B></FONT>:
+    <FONT COLOR=#3333CC><B>from</B></FONT> TextTools.Constants.TagTables <FONT COLOR=#3333CC><B>import</B></FONT> *
+    <FONT COLOR=#3333CC><B>from</B></FONT> TextTools.Constants.Sets <FONT COLOR=#3333CC><B>import</B></FONT> *
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#1111CC># Useful little constants for unpicking the parsed tuples</FONT>
+OBJECT  = 0
+LEFT    = 1
+RIGHT   = 2
+SUBLIST = 3
+
+<FONT COLOR=#1111CC># We want to align inline comments when possible - so this is</FONT>
+<FONT COLOR=#1111CC># the column at which we will try to place their "#" marks...</FONT>
+COMMENT_COLUMN = 40
+
+<FONT COLOR=#1111CC># Are we (generally) debugging?</FONT>
+DEBUGGING = 0
+
+<FONT COLOR=#1111CC># Do we want a comma after the last tuple (or item) in a table?</FONT>
+WANT_LAST_COMMA = 1
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" define_tagtable"><FONT COLOR=#CC0000><B> define_tagtable</B></FONT>():
+    <FONT COLOR=#115511>"""Returns our tag table, if we're not importing it."""</FONT>
+
+    <FONT COLOR=#1111CC># We are not, initially, going to try for anything very sophisticated</FONT>
+    <FONT COLOR=#1111CC># - just something that will get us bootstrapped, so that I can use the</FONT>
+    <FONT COLOR=#1111CC>#   "little language" to write more sophisticated stuff (without having</FONT>
+    <FONT COLOR=#1111CC>#   to worry about dropped commas between tuples, and so on!)</FONT>
+
+
+    <FONT COLOR=#1111CC># Whitespace is always useful</FONT>
+    t_whitespace = (None,AllIn,<FONT COLOR=#115511>' \t'</FONT>)
+    t_opt_whitespace = t_whitespace + (+1,)
+
+    <FONT COLOR=#1111CC># Comments are fairly simple</FONT>
+    t_comment = (<FONT COLOR=#115511>'comment'</FONT>,Table,
+                 ((None,Is,<FONT COLOR=#115511>'#'</FONT>),
+                  (None,AllNotIn,<FONT COLOR=#115511>'\n\r'</FONT>,MatchOk))
+                 )
+
+    <FONT COLOR=#1111CC># We care about the "content" of the indentation at the start of a line,</FONT>
+    <FONT COLOR=#1111CC># but note that it is optional</FONT>
+    t_indent = (<FONT COLOR=#115511>'indent'</FONT>,AllIn,<FONT COLOR=#115511>' \t'</FONT>)
+    t_indentation = t_indent + (+1,)        <FONT COLOR=#1111CC># zero indentation doesn't show</FONT>
+
+    <FONT COLOR=#1111CC># A string is text within single or double quotes</FONT>
+    <FONT COLOR=#1111CC># (of course, this is an oversimplification, because we should also</FONT>
+    <FONT COLOR=#1111CC>#  deal with things like "This is a \"substring\"", and it would be</FONT>
+    <FONT COLOR=#1111CC>#  nice to be able to cope with triple-quoted strings too, but it</FONT>
+    <FONT COLOR=#1111CC>#  will do for a start)</FONT>
+
+    <FONT COLOR=#1111CC># Major bug - doesn't recognised zero length strings...</FONT>
+    <FONT COLOR=#1111CC># (since "AllNotIn" must match at least one character)</FONT>
+    t_string = (<FONT COLOR=#115511>'str'</FONT>,Table,
+                ((None,Is,<FONT COLOR=#115511>"'"</FONT>,+3,+1),
+                 (<FONT COLOR=#115511>'text'</FONT>,AllNotIn,<FONT COLOR=#115511>"'"</FONT>),
+                 (None,Is,<FONT COLOR=#115511>"'"</FONT>,MatchFail,MatchOk),
+                 (None,Is,<FONT COLOR=#115511>'"'</FONT>),
+                 (<FONT COLOR=#115511>'text'</FONT>,AllNotIn,<FONT COLOR=#115511>'"'</FONT>),
+                 (None,Is,<FONT COLOR=#115511>'"'</FONT>),
+                 ))
+
+    <FONT COLOR=#1111CC># An integer is a series of digits...</FONT>
+    t_integer = (<FONT COLOR=#115511>'int'</FONT>,AllIn,number)
+    
+    t_signed_integer = (<FONT COLOR=#115511>'signed_int'</FONT>,Table,
+                        ((<FONT COLOR=#115511>'sign'</FONT>,Is,<FONT COLOR=#115511>"+"</FONT>,+1,+2),
+                         (<FONT COLOR=#115511>'sign'</FONT>,Is,<FONT COLOR=#115511>"-"</FONT>,+1,+1),
+                         t_integer
+                         ))
+
+    <FONT COLOR=#1111CC># Remember to be careful to specify the LONGEST possible match first,</FONT>
+    <FONT COLOR=#1111CC># so that we try for "IsIn" before we try for "Is" (because "IsIn"</FONT>
+    <FONT COLOR=#1111CC># would *match* "Is", leaving us with a spurious "In" hanging around...)</FONT>
+    t_operation = (<FONT COLOR=#115511>'op'</FONT>,Table,
+                   ((<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"AllInSet"</FONT>,   +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"AllIn"</FONT>,      +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"AllNotIn"</FONT>,   +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"CallArg"</FONT>,    +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Call"</FONT>,       +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"EOF"</FONT>,        +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Fail"</FONT>,       +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"IsInSet"</FONT>,    +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"IsIn"</FONT>,       +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"IsNotIn"</FONT>,    +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"IsNot"</FONT>,      +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Is"</FONT>,         +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Jump"</FONT>,       +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"LoopControl"</FONT>,+1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Loop"</FONT>,       +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Move"</FONT>,       +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"NoWord"</FONT>,     +1,MatchOk), <FONT COLOR=#1111CC># alias for WordStart</FONT>
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Skip"</FONT>,       +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"SubTableInList"</FONT>,+1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"SubTable"</FONT>,   +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"sFindWord"</FONT>,  +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"sWordStart"</FONT>, +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"sWordEnd"</FONT>,   +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"TableInList"</FONT>,+1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Table"</FONT>,      +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"WordStart"</FONT>,  +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"WordEnd"</FONT>,    +1,MatchOk),
+                    (<FONT COLOR=#115511>'op'</FONT>,Word,<FONT COLOR=#115511>"Word"</FONT>,       MatchFail,MatchOk),
+                    ))
+
+    <FONT COLOR=#1111CC># Python keywords</FONT>
+    t_keyword = (<FONT COLOR=#115511>'keyword'</FONT>,Table,
+                 ((None,Word,<FONT COLOR=#115511>"and"</FONT>,     +1,+28),
+                  (None,Word,<FONT COLOR=#115511>"assert"</FONT>,  +1,+27),
+                  (None,Word,<FONT COLOR=#115511>"break"</FONT>,   +1,+26),
+                  (None,Word,<FONT COLOR=#115511>"class"</FONT>,   +1,+25),
+                  (None,Word,<FONT COLOR=#115511>"continue"</FONT>,+1,+24),
+                  (None,Word,<FONT COLOR=#115511>"def"</FONT>,     +1,+23),
+                  (None,Word,<FONT COLOR=#115511>"del"</FONT>,     +1,+22),
+                  (None,Word,<FONT COLOR=#115511>"elif"</FONT>,    +1,+21),
+                  (None,Word,<FONT COLOR=#115511>"else"</FONT>,    +1,+20),
+                  (None,Word,<FONT COLOR=#115511>"except"</FONT>,  +1,+19),
+                  (None,Word,<FONT COLOR=#115511>"exec"</FONT>,    +1,+18),
+                  (None,Word,<FONT COLOR=#115511>"finally"</FONT>, +1,+17),
+                  (None,Word,<FONT COLOR=#115511>"for"</FONT>,     +1,+16),
+                  (None,Word,<FONT COLOR=#115511>"from"</FONT>,    +1,+15),
+                  (None,Word,<FONT COLOR=#115511>"global"</FONT>,  +1,+14),
+                  (None,Word,<FONT COLOR=#115511>"if"</FONT>,      +1,+13),
+                  (None,Word,<FONT COLOR=#115511>"import"</FONT>,  +1,+12),
+                  (None,Word,<FONT COLOR=#115511>"in"</FONT>,      +1,+11),
+                  (None,Word,<FONT COLOR=#115511>"is"</FONT>,      +1,+10),
+                  (None,Word,<FONT COLOR=#115511>"lambda"</FONT>,  +1,+9),
+                  (None,Word,<FONT COLOR=#115511>"not"</FONT>,     +1,+8),
+                  (None,Word,<FONT COLOR=#115511>"or"</FONT>,      +1,+7),
+                  (None,Word,<FONT COLOR=#115511>"pass"</FONT>,    +1,+6),
+                  (None,Word,<FONT COLOR=#115511>"print"</FONT>,   +1,+5),
+                  (None,Word,<FONT COLOR=#115511>"raise"</FONT>,   +1,+4),
+                  (None,Word,<FONT COLOR=#115511>"return"</FONT>,  +1,+3),
+                  (None,Word,<FONT COLOR=#115511>"try"</FONT>,     +1,+2),
+                  (None,Word,<FONT COLOR=#115511>"while"</FONT>,   MatchFail,+1),
+                  <FONT COLOR=#1111CC># In order to not recognise things like "in_THIS_CASE"</FONT>
+                  <FONT COLOR=#1111CC># we must check that the next character is not legitimate</FONT>
+                  <FONT COLOR=#1111CC># within an identifier</FONT>
+                  (None,IsIn,alpha+<FONT COLOR=#115511>'_'</FONT>+number,+1,MatchFail),
+                  <FONT COLOR=#1111CC># If it wasn't another identifier character, we need to</FONT>
+                  <FONT COLOR=#1111CC># unread it so that it can be recognised as something else</FONT>
+                  <FONT COLOR=#1111CC># (so that, for instance, "else:" is seen as "else" followed</FONT>
+                  <FONT COLOR=#1111CC>#  by ":")</FONT>
+                  (None,Skip,-1)
+                  ))
+
+    <FONT COLOR=#1111CC># Do the same for mxText commands</FONT>
+    t_mxkeyword = (<FONT COLOR=#115511>'mxKeyword'</FONT>,Table,
+                   (t_operation,
+                    (None,IsIn,alpha+<FONT COLOR=#115511>'_'</FONT>+number,+1,MatchFail),
+                    (None,Skip,-1)
+                    ))
+
+    <FONT COLOR=#1111CC># Traditional identifiers</FONT>
+    t_identifier = (<FONT COLOR=#115511>'identifier'</FONT>,Table,
+                    (t_keyword   + (+1,MatchFail), <FONT COLOR=#1111CC># don't allow Python keywords</FONT>
+                     t_mxkeyword + (+1,MatchFail), <FONT COLOR=#1111CC># don't allow mxText commands</FONT>
+                     (None,IsIn,alpha+<FONT COLOR=#115511>'_'</FONT>),        <FONT COLOR=#1111CC># can't start with a digit</FONT>
+                     (None,AllIn,alpha+<FONT COLOR=#115511>'_'</FONT>+number,MatchOk))
+                    )
+
+    <FONT COLOR=#1111CC># We don't yet deal with the following with anything in parentheses,</FONT>
+    <FONT COLOR=#1111CC># which means we can't handle functions or command lists, or other</FONT>
+    <FONT COLOR=#1111CC># things which "look like" a tuple</FONT>
+    t_argument = (<FONT COLOR=#115511>'arg'</FONT>,Table,
+                  ((<FONT COLOR=#115511>'arg'</FONT>,Word,<FONT COLOR=#115511>"Here"</FONT>,     +1,MatchOk), <FONT COLOR=#1111CC># EOF Here, Fail Here</FONT>
+                   (<FONT COLOR=#115511>'arg'</FONT>,Word,<FONT COLOR=#115511>"ToEOF"</FONT>,    +1,MatchOk), <FONT COLOR=#1111CC># Move ToEOF</FONT>
+                   (<FONT COLOR=#115511>'arg'</FONT>,Word,<FONT COLOR=#115511>"To"</FONT>,       +1,MatchOk), <FONT COLOR=#1111CC># Jump To</FONT>
+                   (<FONT COLOR=#115511>'arg'</FONT>,Word,<FONT COLOR=#115511>"ThisTable"</FONT>,+1,MatchOk), <FONT COLOR=#1111CC># [Sub]Table ThisTable</FONT>
+                   (<FONT COLOR=#115511>'arg'</FONT>,Word,<FONT COLOR=#115511>"back"</FONT>,     +1,MatchOk), <FONT COLOR=#1111CC># Skip back</FONT>
+                   (<FONT COLOR=#115511>'arg'</FONT>,Word,<FONT COLOR=#115511>"Break"</FONT>,    +1,MatchOk), <FONT COLOR=#1111CC># LoopControl Break</FONT>
+                   (<FONT COLOR=#115511>'arg'</FONT>,Word,<FONT COLOR=#115511>"Reset"</FONT>,    +1,MatchOk), <FONT COLOR=#1111CC># LoopControl Reset</FONT>
+                   t_string             + (+1,MatchOk), <FONT COLOR=#1111CC># e.g., Word "Fred"</FONT>
+                   t_signed_integer     + (+1,MatchOk), <FONT COLOR=#1111CC># e.g., Skip -4, Move 3</FONT>
+                   t_identifier                         <FONT COLOR=#1111CC># e.g., Table Fred</FONT>
+                   ))
+
+    t_plus = (<FONT COLOR=#115511>'plus'</FONT>,Table,
+              (t_opt_whitespace,
+               (None,Is,<FONT COLOR=#115511>"+"</FONT>),
+               t_opt_whitespace
+               ))
+
+    <FONT COLOR=#1111CC># Arguments can contain "+"</FONT>
+    t_plus_arg = (<FONT COLOR=#115511>'plusarg'</FONT>,Table,
+                  (t_argument,              <FONT COLOR=#1111CC># start with a single argument</FONT>
+                   t_plus + (MatchOk,),     <FONT COLOR=#1111CC># if we have a "+"</FONT>
+                   t_argument,              <FONT COLOR=#1111CC># then we expect another argument</FONT>
+                   (None,Jump,To,-2),       <FONT COLOR=#1111CC># then look for another "+"</FONT>
+                   ))
+
+    <FONT COLOR=#1111CC># Match, for example:</FONT>
+    <FONT COLOR=#1111CC>#        &lt;fred&gt;</FONT>
+    t_label = (<FONT COLOR=#115511>'label'</FONT>,Table,
+               ((None,Is,<FONT COLOR=#115511>"&lt;"</FONT>),
+                t_identifier,
+                (None,Is,<FONT COLOR=#115511>"&gt;"</FONT>)
+                ))
+
+    <FONT COLOR=#1111CC># Targets for Jump and F:/T:</FONT>
+    t_target = (<FONT COLOR=#115511>'target'</FONT>,Table,
+                ((<FONT COLOR=#115511>'tgt'</FONT>,Word,<FONT COLOR=#115511>"next"</FONT>,     +1,MatchOk),
+                 (<FONT COLOR=#115511>'tgt'</FONT>,Word,<FONT COLOR=#115511>"previous"</FONT>, +1,MatchOk),
+                 (<FONT COLOR=#115511>'tgt'</FONT>,Word,<FONT COLOR=#115511>"repeat"</FONT>,   +1,MatchOk),
+                 (<FONT COLOR=#115511>'tgt'</FONT>,Word,<FONT COLOR=#115511>"MatchOk"</FONT>,  +1,MatchOk),
+                 (<FONT COLOR=#115511>'tgt'</FONT>,Word,<FONT COLOR=#115511>"MatchOK"</FONT>,  +1,MatchOk), <FONT COLOR=#1111CC># For kindness sake</FONT>
+                 (<FONT COLOR=#115511>'tgt'</FONT>,Word,<FONT COLOR=#115511>"MatchFail"</FONT>,+1,MatchOk),
+                 t_label
+                 ))
+
+    <FONT COLOR=#1111CC># A value is either an identifier, or a string, or an integer</FONT>
+    t_value = (<FONT COLOR=#115511>'val'</FONT>,Table,
+               (t_identifier +(+1,MatchOk),
+                t_string     +(+1,MatchOk),
+                t_integer
+                ))
+
+    <FONT COLOR=#1111CC># An assignment is (optionally) used in Tuple and Table definitions...</FONT>
+    t_assignment = (<FONT COLOR=#115511>'assignment'</FONT>,Table,
+                    (t_value,
+                     t_opt_whitespace,
+                     (None,Is,<FONT COLOR=#115511>'='</FONT>),
+                     ))
+
+    <FONT COLOR=#1111CC># A common error when writing tuples is to miss off the "=" sign</FONT>
+    <FONT COLOR=#1111CC># - the following is used in diagnosing that (see t_bad_tuple below)</FONT>
+    <FONT COLOR=#1111CC># (it's useful to have something with identical structure to the</FONT>
+    <FONT COLOR=#1111CC>#  "real thing")</FONT>
+    t_bad_tagobj = (<FONT COLOR=#115511>'tagobj'</FONT>,Table,
+                    (t_string,
+                     ))
+
+    t_bad_assignment = (<FONT COLOR=#115511>'assignment'</FONT>,Table,
+                        (t_value,
+                         ))
+
+    <FONT COLOR=#1111CC># This is the line that starts the definition of a single tuple.</FONT>
+    <FONT COLOR=#1111CC># For the moment, restrict what it gets assigned to to a simple identifier.</FONT>
+    <FONT COLOR=#1111CC># Match, for example:</FONT>
+    <FONT COLOR=#1111CC>#        Fred is:</FONT>
+    t_tupleblock = (<FONT COLOR=#115511>'tupleblock'</FONT>,Table,
+                    (t_identifier,
+                     t_whitespace,
+                     (None,Word,<FONT COLOR=#115511>"is:"</FONT>)
+                     ))
+
+    <FONT COLOR=#1111CC># This is the line that starts a new table or sub-table.</FONT>
+    <FONT COLOR=#1111CC># For the moment, we only cope with full Tables.</FONT>
+    <FONT COLOR=#1111CC># NOTE that this is used for the "outer" declaration of a tag table,</FONT>
+    <FONT COLOR=#1111CC># and also for the "inner" declaration of an inner table or sub-table.</FONT>
+    <FONT COLOR=#1111CC># The discrimination between these is done after initial parsing.</FONT>
+    <FONT COLOR=#1111CC># Match, for example:</FONT>
+    <FONT COLOR=#1111CC>#        'keyword' = Table is:      (inner)</FONT>
+    <FONT COLOR=#1111CC>#        tagtable = Table is:       (outer)</FONT>
+    t_tableblock = (<FONT COLOR=#115511>'tableblock'</FONT>,Table,
+                    (t_assignment + (+2,+1),  <FONT COLOR=#1111CC># left hand side is optional</FONT>
+                     t_opt_whitespace,
+                     (<FONT COLOR=#115511>'type'</FONT>,Word,<FONT COLOR=#115511>"Table"</FONT>,+1,+2),  <FONT COLOR=#1111CC># Either "Table"</FONT>
+                     (<FONT COLOR=#115511>'type'</FONT>,Word,<FONT COLOR=#115511>"SubTable"</FONT>),     <FONT COLOR=#1111CC># or "SubTable" is required</FONT>
+                     t_whitespace,            <FONT COLOR=#1111CC># whitespace is required</FONT>
+                     (None,Word,<FONT COLOR=#115511>"is:"</FONT>)        <FONT COLOR=#1111CC># "is:" is required</FONT>
+                     ))
+
+    <FONT COLOR=#1111CC># This is the line that starts an "if" block</FONT>
+    <FONT COLOR=#1111CC># Match, for example:</FONT>
+    <FONT COLOR=#1111CC>#        Is "Fred":</FONT>
+    <FONT COLOR=#1111CC>#        controlsymbol:</FONT>
+    t_ifblock = (<FONT COLOR=#115511>'ifblock'</FONT>,Table,
+                 (t_assignment + (+2,+1),      <FONT COLOR=#1111CC># left hand side is optional</FONT>
+                  t_opt_whitespace,
+                  t_operation + (+4,+1),
+                  t_whitespace,
+                  t_plus_arg,
+                  (None,Is,<FONT COLOR=#115511>":"</FONT>,MatchFail,MatchOk),
+                  t_identifier,
+                  (None,Is,<FONT COLOR=#115511>":"</FONT>)
+                  ))
+
+    <FONT COLOR=#1111CC># Note that we don't allow spaces WITHIN our false and true thingies</FONT>
+
+    t_onfalse = (<FONT COLOR=#115511>'onfalse'</FONT>,Table,
+                 (t_whitespace,
+                  (None,Word,<FONT COLOR=#115511>"F:"</FONT>),
+                  t_target
+                  ))
+
+    t_ontrue = (<FONT COLOR=#115511>'ontrue'</FONT>,Table,
+                (t_whitespace,
+                 (None,Word,<FONT COLOR=#115511>"T:"</FONT>),
+                 t_target
+                 ))
+
+    <FONT COLOR=#1111CC># Valid examples are things like:</FONT>
+    <FONT COLOR=#1111CC>#        'fred' = Is "xxx" F:&lt;wow&gt; T:MatchOk</FONT>
+    <FONT COLOR=#1111CC>#       AllIn jim T:&lt;foundJim&gt;</FONT>
+    <FONT COLOR=#1111CC>#</FONT>
+    <FONT COLOR=#1111CC># For the moment, we're not trying to recognise things in any detail</FONT>
+    t_tuple = (<FONT COLOR=#115511>'tuple'</FONT>,Table,
+               (t_assignment + (+2,+1),  <FONT COLOR=#1111CC># left hand side is optional</FONT>
+                t_opt_whitespace,
+                t_operation,         <FONT COLOR=#1111CC># operation is required</FONT>
+                t_whitespace,        <FONT COLOR=#1111CC># for the moment, we always require space here</FONT>
+                t_plus_arg,          <FONT COLOR=#1111CC># argument is required</FONT>
+                t_onfalse + (+1,+1),          <FONT COLOR=#1111CC># F:target is optional</FONT>
+                t_ontrue  + (MatchOk,MatchOk) <FONT COLOR=#1111CC># T:target is also optional</FONT>
+                ))
+
+    <FONT COLOR=#1111CC># If the user has defined a "partial" tuple, they might use something</FONT>
+    <FONT COLOR=#1111CC># of the form:</FONT>
+    <FONT COLOR=#1111CC>#       match_fred  F:MatchFalse T:MatchOk</FONT>
+    t_tupleplus = (<FONT COLOR=#115511>'tupleplus'</FONT>,Table,
+                   (t_identifier,
+                    t_onfalse + (+1,+1),          <FONT COLOR=#1111CC># F:target is optional</FONT>
+                    t_ontrue  + (MatchOk,MatchOk) <FONT COLOR=#1111CC># T:target is also optional</FONT>
+                    ))
+
+    <FONT COLOR=#1111CC># Treat Jump To specially - for example:</FONT>
+    <FONT COLOR=#1111CC>#       Jump To &lt;top&gt;</FONT>
+    <FONT COLOR=#1111CC># so that they don't have to do the less obvious "Jump To F:&lt;label&gt;"</FONT>
+    <FONT COLOR=#1111CC># (although that will still be recognised, of course, for people who</FONT>
+    <FONT COLOR=#1111CC># are used to the tag tuple format itself)</FONT>
+    t_jumpto = (<FONT COLOR=#115511>'jumpto'</FONT>,Table,
+                ((None,Word,<FONT COLOR=#115511>"Jump"</FONT>),
+                 t_whitespace,
+                 (None,Word,<FONT COLOR=#115511>"To"</FONT>),
+                 t_whitespace,
+                 t_target
+                 ))
+
+    <FONT COLOR=#1111CC># Is it worth coping with these?</FONT>
+    t_bad_jumpto = (<FONT COLOR=#115511>'jumpto'</FONT>,Table,
+                    ((None,Word,<FONT COLOR=#115511>"Jump"</FONT>,+2),         <FONT COLOR=#1111CC># cope with Jump to</FONT>
+                     (None,Word,<FONT COLOR=#115511>"to"</FONT>,MatchFail,+2),
+                     (None,Word,<FONT COLOR=#115511>"JumpTo"</FONT>),          <FONT COLOR=#1111CC># and with JumpTo</FONT>
+                     t_target
+                     ))
+
+    <FONT COLOR=#1111CC># The "content" of a line is the bit after any indentation, and before</FONT>
+    <FONT COLOR=#1111CC># any comment...</FONT>
+    <FONT COLOR=#1111CC># For the moment, we won't try to maintain ANY context, so it is up to the</FONT>
+    <FONT COLOR=#1111CC># user of the tuples produced to see if they make sense...</FONT>
+    t_content = (<FONT COLOR=#115511>'content'</FONT>,Table,
+                 (t_label        + (+1,MatchOk),
+                  t_tableblock   + (+1,MatchOk), <FONT COLOR=#1111CC># [&lt;value&gt; =] [Sub]Table is:</FONT>
+                  t_tupleblock   + (+1,MatchOk), <FONT COLOR=#1111CC># &lt;identifier&gt; is:</FONT>
+                  t_ifblock      + (+1,MatchOk), <FONT COLOR=#1111CC># &lt;cmd&gt; &lt;arg&gt;: OR &lt;identifier&gt;:</FONT>
+                  t_jumpto       + (+1,MatchOk), <FONT COLOR=#1111CC># Jump To &lt;target&gt;</FONT>
+                  t_tuple        + (+1,MatchOk),
+                  t_tupleplus    + (+1,MatchOk), <FONT COLOR=#1111CC># name [F:&lt;label&gt; [T:&lt;label&gt;]]</FONT>
+                  ))
+
+    t_contentline = (<FONT COLOR=#115511>'contentline'</FONT>,Table,
+                     (t_content,            <FONT COLOR=#1111CC># something that we care about</FONT>
+                      t_opt_whitespace,
+                      t_comment   +(+1,+1), <FONT COLOR=#1111CC># always allow a comment</FONT>
+                      (None,IsIn,newline)   <FONT COLOR=#1111CC># the end of the line</FONT>
+                      ))
+
+    <FONT COLOR=#1111CC># Sometimes, the user (e.g., me) writes:</FONT>
+    <FONT COLOR=#1111CC>#	'fred' = Table:</FONT>
+    <FONT COLOR=#1111CC># instead of:</FONT>
+    <FONT COLOR=#1111CC>#	'fred' = Table is:</FONT>
+    <FONT COLOR=#1111CC># Unfortunately, without the "is", it would get too confusing whether</FONT>
+    <FONT COLOR=#1111CC># we actually wanted an if block...</FONT>
+    t_bad_tableblock = (<FONT COLOR=#115511>'tableblock'</FONT>,Table,
+                        (t_assignment + (+2,+1),  <FONT COLOR=#1111CC># left hand side is optional</FONT>
+                         t_opt_whitespace,
+                         (None,Word,<FONT COLOR=#115511>"Table"</FONT>),     <FONT COLOR=#1111CC># "Table" is required</FONT>
+                         (None,Is,<FONT COLOR=#115511>":"</FONT>)            <FONT COLOR=#1111CC># "is" is needed before the ":"</FONT>
+                         ))
+
+    <FONT COLOR=#1111CC># Sometimes, the use (e.g., me again) write:</FONT>
+    <FONT COLOR=#1111CC>#	'fred' IsIn jim</FONT>
+    <FONT COLOR=#1111CC># instead of:</FONT>
+    <FONT COLOR=#1111CC>#	'fred' = IsIn jim</FONT>
+    <FONT COLOR=#1111CC># Whilst I'm not entirely convinced that "=" is the best character</FONT>
+    <FONT COLOR=#1111CC># to use here, I think we do need something!</FONT>
+    t_bad_tuple = (<FONT COLOR=#115511>'tuple'</FONT>,Table,
+                   (t_bad_assignment, <FONT COLOR=#1111CC># obviously we have to have this!</FONT>
+                    t_whitespace,     <FONT COLOR=#1111CC># in which case the whitespace IS needed</FONT>
+                    t_operation,      <FONT COLOR=#1111CC># operation is required</FONT>
+                    t_whitespace,     <FONT COLOR=#1111CC># for the moment, we must have space here</FONT>
+                    t_plus_arg,       <FONT COLOR=#1111CC># argument is required</FONT>
+                    t_onfalse + (+1,+1),          <FONT COLOR=#1111CC># F:target is optional</FONT>
+                    t_ontrue  + (MatchOk,MatchOk) <FONT COLOR=#1111CC># T:target is also optional</FONT>
+                    ))
+
+    <FONT COLOR=#1111CC># Make some attempt to recognise common errors...</FONT>
+    t_badcontent = (<FONT COLOR=#115511>'badcontent'</FONT>,Table,
+                    (t_bad_tableblock +(+1,MatchOk),
+                     t_bad_tuple
+                     ))
+
+    t_badline = (<FONT COLOR=#115511>'badline'</FONT>,Table,
+                 (t_badcontent,         <FONT COLOR=#1111CC># something that we sort of care about</FONT>
+                  t_opt_whitespace,
+                  t_comment   +(+1,+1), <FONT COLOR=#1111CC># always allow a comment</FONT>
+                  (None,IsIn,newline)   <FONT COLOR=#1111CC># the end of the line</FONT>
+                  ))
+
+    t_emptyline = (<FONT COLOR=#115511>'emptyline'</FONT>,Table,
+                   (t_opt_whitespace,
+                    (None,IsIn,newline)     <FONT COLOR=#1111CC># the end of the line</FONT>
+                    ))
+
+    t_commentline = (<FONT COLOR=#115511>'commentline'</FONT>,Table,
+                     (t_comment,
+                      (None,IsIn,newline)   <FONT COLOR=#1111CC># the end of the line</FONT>
+                      ))
+
+    t_passthruline = (<FONT COLOR=#115511>'passthruline'</FONT>,Table,
+                      ((<FONT COLOR=#115511>'passthru'</FONT>,AllNotIn,newline,+1), <FONT COLOR=#1111CC># owt else on the line</FONT>
+                       (None,IsIn,newline)               <FONT COLOR=#1111CC># the end of the line</FONT>
+                       ))
+
+    <FONT COLOR=#1111CC># Basically, a file is a series of lines</FONT>
+    t_line = (<FONT COLOR=#115511>'line'</FONT>,Table,
+              (t_emptyline   +(+1,MatchOk),    <FONT COLOR=#1111CC># empty lines are simple enough</FONT>
+               t_indent      +(+1,+1),         <FONT COLOR=#1111CC># optional indentation</FONT>
+               t_commentline +(+1,MatchOk),    <FONT COLOR=#1111CC># always allow a comment</FONT>
+               t_contentline +(+1,MatchOk),    <FONT COLOR=#1111CC># a line we care about</FONT>
+               t_badline     +(+1,MatchOk),    <FONT COLOR=#1111CC># a line we think is wrong</FONT>
+               t_passthruline                  <FONT COLOR=#1111CC># a line we don't care about</FONT>
+               ))
+
+    t_file = (t_line,
+              (None,EOF,Here,-1)
+              )
+
+    <FONT COLOR=#3333CC><B>return</B></FONT> t_file
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#1111CC># We'll define some moderately interesting test data</FONT>
+
+test_data = <FONT COLOR=#115511>"""\
+# This example isn't *meant* to make any sense!
+# It's just an accumulation of things that got checked for various reasons 
+from TextTools import *
+# Some Python code
+a = b;
+fred = 3;
+if a == 1:
+    print "a == 1"
+else:
+    print "a != 1"
+
+# And the rest is our business...
+t_integer is:
+    'int' = AllIn '0123456789'
+t_integer is:
+    'int' = AllIn number
+t_indent is:
+    # A comment here is OK
+    &lt;label&gt; # Strangely enough, so is a label
+    'indent' = AllIn ' \t'
+t_buggy = Table is:
+    'int' AllIn number    # BUGGY LINE (missing "=")
+    (None,"AllIn",number) # BUGGY LINE (an actual tuple)
+    fred = jim            # BUGGY LINE (not our business)
+    tagobj F:&lt;op&gt; T:next  # label &lt;op&gt; is undefined
+    # The next line is totally empty
+
+    # The next line contains just indentation
+
+    # This line is just a comment
+# And this comment should be JUST after the preceding block...
+t_indentation is:          # This should be "= Table is:"
+    t_indent
+    t_indent F:previous
+    t_indent T:previous
+    t_indent F:previous T:previous
+t_deep = Table is:
+    'a' = SubTable is:
+        SubTable is:
+            'this' = Table ThisTable
+            t_integer
+t_fred = Table is:
+    &lt;top&gt;
+    AllIn 'a'
+    'a' = AllIn 'a'
+    'a' = AllIn 'a' F:previous
+    'a' = AllIn 'a' T:previous
+    'a' = AllIn 'a' F:previous T:previous
+    AllIn 'abcd':
+        AllIn 'xyz' F:&lt;later&gt; T:&lt;top&gt;
+    'a' = AllIn 'abcd':
+        AllIn 'xyz'
+    &lt;later&gt;
+    t_indent:
+        AllIn 'xyz'
+    AllIn number + '_'
+    AllIn number+"_"+alpha
+    Jump To &lt;top&gt;
+"""</FONT>
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#1111CC># Our own exceptions</FONT>
+
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" OutsideError"><FONT COLOR=#CC0000><B> OutsideError</B></FONT>(Exception):
+    <FONT COLOR=#115511>"""The entity is not permitted outside a block."""</FONT>
+    <FONT COLOR=#3333CC><B>pass</B></FONT>
+
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" IndentError"><FONT COLOR=#CC0000><B> IndentError</B></FONT>(Exception):
+    <FONT COLOR=#115511>"""An indentation error has been detected."""</FONT>
+    <FONT COLOR=#3333CC><B>pass</B></FONT>
+
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" NoIdentifier"><FONT COLOR=#CC0000><B> NoIdentifier</B></FONT>(Exception):
+    <FONT COLOR=#115511>"""We're missing an identifier (to assign to)."""</FONT>
+    <FONT COLOR=#3333CC><B>pass</B></FONT>
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" LineFactory"><FONT COLOR=#CC0000><B> LineFactory</B></FONT>(lineno,tagtuple,text):
+    <FONT COLOR=#115511>"""Take some tagged data and return an appropriate line class.
+
+    lineno   -- the line number in the "file". Note that the first line
+                in the file is line 1
+    tagtuple -- a tag tuple for a single line of data
+    text     -- the text for the "file". All the "left" and "right" offsets
+                are relative to this text (i.e., it is the entire content
+                of the file)
+
+    The tag tuples we get back from the parser will be of the form:
+
+        ('line',left,right,[
+          ('indent',left,right,None),    -- this is optional
+          ('content',left,right,[&lt;data&gt;])
+        ])
+
+    Looking at &lt;type&gt; should enable us to decide what to do with
+    the &lt;data&gt;.
+    """</FONT>
+
+    <FONT COLOR=#1111CC># Extract the list of tuples from this 'line'</FONT>
+    tuples = tagtuple[SUBLIST]
+
+    <FONT COLOR=#1111CC># First off, do we have any indentation?</FONT>
+    tup = tuples[0]
+    <FONT COLOR=#3333CC><B>if</B></FONT> tup[OBJECT] == <FONT COLOR=#115511>"indent"</FONT>:
+        <FONT COLOR=#1111CC># This is inefficient, because it actually copies strings</FONT>
+        <FONT COLOR=#1111CC># around - better would be to duplicate the calculation</FONT>
+        <FONT COLOR=#1111CC># that string.expandtabs does internally...</FONT>
+        indent_str = string.expandtabs(text[tup[LEFT]:tup[RIGHT]])
+        tuples = tuples[1:]
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        indent_str = <FONT COLOR=#115511>""</FONT>
+        tuples = tuples
+
+    <FONT COLOR=#1111CC># Now, work out which class we want an instance of</FONT>
+    <FONT COLOR=#1111CC># (this is the 'fun' bit)</FONT>
+
+    type = tuples[0][OBJECT]
+    <FONT COLOR=#3333CC><B>if</B></FONT> type == <FONT COLOR=#115511>'emptyline'</FONT>:
+        <FONT COLOR=#3333CC><B>return</B></FONT> EmptyLine(lineno,indent_str,tuples[0],text)
+    <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'commentline'</FONT>:
+        <FONT COLOR=#3333CC><B>return</B></FONT> CommentLine(lineno,indent_str,tuples[0],text)
+    <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'passthruline'</FONT>:
+        <FONT COLOR=#3333CC><B>return</B></FONT> PassThruLine(lineno,indent_str,tuples[0],text)
+    <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'contentline'</FONT>:
+        <FONT COLOR=#1111CC># OK - we need to go down another level</FONT>
+        sublist = tuples[0][SUBLIST]
+
+        <FONT COLOR=#1111CC># Do we also have an in-line comment?</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> len(sublist) &gt; 1:
+            comment = sublist[1]
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            comment = None
+
+        <FONT COLOR=#1111CC># And the actual DATA for our line is down yet another level...</FONT>
+        sublist = sublist[0][SUBLIST]
+        type = sublist[0][OBJECT]
+        <FONT COLOR=#3333CC><B>if</B></FONT> type == <FONT COLOR=#115511>'label'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> LabelLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'tableblock'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> TableBlockLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'tupleblock'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> TupleBlockLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'ifblock'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> IfBlockLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'tuple'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> TupleLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'tupleplus'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> TuplePlusLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'jumpto'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> JumpToLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#3333CC><B>raise</B></FONT> ValueError,\
+                  <FONT COLOR=#115511>"Line %d is of unexpected type 'contentline/%s'"</FONT>%(lineno,
+                                                                    type)
+    <FONT COLOR=#3333CC><B>elif</B></FONT> type == <FONT COLOR=#115511>'badline'</FONT>:
+        <FONT COLOR=#1111CC># OK - we need to go down another level</FONT>
+        sublist = tuples[0][SUBLIST]
+
+        <FONT COLOR=#1111CC># Do we also have an in-line comment?</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> len(sublist) &gt; 1:
+            comment = sublist[1]
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            comment = None
+
+        <FONT COLOR=#1111CC># And the actual DATA for our line is down yet another level...</FONT>
+        sublist = sublist[0][SUBLIST]
+        type = sublist[0][OBJECT]
+        <FONT COLOR=#3333CC><B>if</B></FONT> type == <FONT COLOR=#115511>'tableblock'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> BadTableBlockLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>if</B></FONT> type == <FONT COLOR=#115511>'tuple'</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> BadTupleLine(lineno,indent_str,sublist[0],comment,text)
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#3333CC><B>raise</B></FONT> ValueError,\
+                  <FONT COLOR=#115511>"Line %d is of unexpected type 'badline/%s'"</FONT>%(lineno,type)
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        <FONT COLOR=#3333CC><B>raise</B></FONT> ValueError,<FONT COLOR=#115511>"Line %d is of unexpected type '%s'"</FONT>%(lineno,type)
+
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" BaseLine"><FONT COLOR=#CC0000><B> BaseLine</B></FONT>:
+    <FONT COLOR=#115511>"""The base class on which the various line types depend
+
+    Contains:
+
+      tagtuple    -- the tagtuple we (our subclass instance) represent(s)
+      lineno      -- the line number in the file (first line is line 1)
+      indent      -- our indentation (integer)
+      indent_str  -- our indentation (a string of spaces)
+      text        -- the text of the "file" we're within
+      class_name  -- the name of the actual class this instance belongs to
+                     (i.e., the name of the subclass, suitable for printing)
+
+    Some things only get useful values after we've been instantiated
+    
+      next_indent -- the indentation of the next line
+      index       -- for a line in a block, its index therein
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,text):
+        <FONT COLOR=#115511>"""Instantiate a BaseLine.
+
+        lineno     -- the line number in the "file". Note that the first line
+                      in the file is line 1
+        indent_str -- the indentation of the line (a string of spaces)
+        tagtuple   -- the tag tuple for this line of data
+        text       -- the text for the "file". All the "left" and "right"
+                      offsets are relative to this text (i.e., it is the
+                      entire content of the file)
+
+        The content of the tagtuple depends on which of our subclasses
+        is being used. Refer to the relevant doc string.
+        """</FONT>
+
+        self.tagtuple = tagtuple
+        self.lineno   = lineno
+        self.text     = text
+
+        self.class_name = self._class_name()
+        self.indent_str = indent_str
+        self.indent     = len(indent_str)
+
+        <FONT COLOR=#1111CC># OK - we don't really know! (but this will do for "EOF")</FONT>
+        self.next_indent = 0
+
+        <FONT COLOR=#1111CC># We don't always HAVE a sensible value for this</FONT>
+        self.index = None
+
+        <FONT COLOR=#1111CC>#if </FONT>DEBUGGING:
+        <FONT COLOR=#1111CC>#    print "Line %3d: %s%s"%(lineno,indent_str,self.class_name)</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" change_indent"><FONT COLOR=#CC0000><B> change_indent</B></FONT>(self,count=None,spaces=<FONT COLOR=#115511>""</FONT>):
+        <FONT COLOR=#115511>"""Change our indentation.
+
+        Specify either "count" or "spaces" (if both are given,
+        "count" will be used, if neither is given, then the
+        indentation will be set to zero)
+        
+        count  -- the number of spaces we're indented by
+        spaces -- a string of spaces
+        """</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> count:
+            self.indent = count
+            self.indent_str = count * <FONT COLOR=#115511>" "</FONT>
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            self.indent_str = spaces
+            self.indent = len(spaces)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _class_name"><FONT COLOR=#CC0000><B> _class_name</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return a representation of the class name."""</FONT>
+
+        full_name = <FONT COLOR=#115511>"%s"</FONT>%self.__class__
+        bits = string.split(full_name,<FONT COLOR=#115511>"."</FONT>)
+        <FONT COLOR=#3333CC><B>return</B></FONT> bits[-1]
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" starts_block"><FONT COLOR=#CC0000><B> starts_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we start a new block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 0
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" only_in_block"><FONT COLOR=#CC0000><B> only_in_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we can only occur inside a block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 0
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" our_business"><FONT COLOR=#CC0000><B> our_business</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we are a line we understand."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __str__"><FONT COLOR=#CC0000><B> __str__</B></FONT>(self):
+        <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"%3d %s%-10s"</FONT>%(self.lineno,self.indent_str,self.class_name)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _intro"><FONT COLOR=#CC0000><B> _intro</B></FONT>(self):
+        <FONT COLOR=#115511>"""Returns a useful 'introductory' string."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"%3d %-10s %s"</FONT>%(self.lineno,self.class_name,self.indent_str)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _trunc"><FONT COLOR=#CC0000><B> _trunc</B></FONT>(self):
+        <FONT COLOR=#115511>"""Returns a "truncated" representation of our text."""</FONT>
+
+        text = <FONT COLOR=#115511>"%s %s"</FONT>%(self._intro(),
+                        `self.text[self.tagtuple[LEFT]:self.tagtuple[RIGHT]]`)
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> len(text) &gt; 60:
+            <FONT COLOR=#3333CC><B>return</B></FONT> text[:60]+<FONT COLOR=#115511>"..."</FONT>
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> text
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" resolve_labels"><FONT COLOR=#CC0000><B> resolve_labels</B></FONT>(self,block):
+        <FONT COLOR=#115511>"""Called to resolve any labels use in this line.
+
+        block -- the block that contains us
+        """</FONT>
+        <FONT COLOR=#1111CC># The default is to do nothing as we don't HAVE any labels...</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" expand"><FONT COLOR=#CC0000><B> expand</B></FONT>(self,stream,block=None):
+        <FONT COLOR=#115511>"""Write out the expanded equivalent of ourselves.
+
+        stream  -- an object with a "write" method, e.g., a file
+        newline -- true if we should output a terminating newline
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+        """</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            stream.write(<FONT COLOR=#115511>"Line %3d: "</FONT>%self.lineno)
+
+        stream.write(self.indent_str)
+        stream.write(self.text[self.tagtuple[LEFT]:self.tagtuple[RIGHT]])
+        stream.write(<FONT COLOR=#115511>",\n"</FONT>)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" warning"><FONT COLOR=#CC0000><B> warning</B></FONT>(self,text):
+        <FONT COLOR=#115511>"""Report a warning message.
+
+        text -- the text to report
+        """</FONT>
+
+        lines = string.split(text,<FONT COLOR=#115511>"\n"</FONT>)
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"###WARNING: line %d (%s)"</FONT>%(self.lineno,self.class_name)
+        <FONT COLOR=#3333CC><B>for</B></FONT> line <FONT COLOR=#3333CC><B>in</B></FONT> lines:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"###         %s"</FONT>%line
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" error"><FONT COLOR=#CC0000><B> error</B></FONT>(self,text):
+        <FONT COLOR=#115511>"""Report an error.
+
+        text -- the error text to report
+        """</FONT>
+
+        lines = string.split(text,<FONT COLOR=#115511>"\n"</FONT>)
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"###ERROR: line %d (%s)"</FONT>%(self.lineno,self.class_name)
+        <FONT COLOR=#3333CC><B>for</B></FONT> line <FONT COLOR=#3333CC><B>in</B></FONT> lines:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"###       %s"</FONT>%line
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" EmptyLine"><FONT COLOR=#CC0000><B> EmptyLine</B></FONT>(BaseLine):
+    <FONT COLOR=#115511>"""An empty line.
+
+    Note that the indentation of an empty line is taken to be the
+    same as that of the next (non-empty) line. This is because it
+    seems to me that (a) an empty line should not per-se close a
+    block (which it would do if it had indentation 0) and (b) we
+    don't remember any whitespace in an empty line, so the user
+    can't assign an indentation themselves (which is a Good Thing!)
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,text):
+        <FONT COLOR=#115511>"""Instantiate an EmptyLine.
+
+        The content of the tagtuple is:
+            None
+        """</FONT>
+
+        BaseLine.__init__(self,lineno,indent_str,tagtuple,text)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" expand"><FONT COLOR=#CC0000><B> expand</B></FONT>(self,stream,block=None):
+        <FONT COLOR=#115511>"""Write out the expanded equivalent of ourselves.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+        """</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            stream.write(<FONT COLOR=#115511>"Line %3d: "</FONT>%self.lineno)
+
+        <FONT COLOR=#1111CC># um - there's nothing to do, folks</FONT>
+        stream.write(<FONT COLOR=#115511>"\n"</FONT>)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" our_business"><FONT COLOR=#CC0000><B> our_business</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we are a line we understand."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 0
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _trunc"><FONT COLOR=#CC0000><B> _trunc</B></FONT>(self):
+        <FONT COLOR=#115511>"""Returns a "truncated" representation of our text."""</FONT>
+
+        <FONT COLOR=#3333CC><B>return</B></FONT> self._intro()
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" CommentLine"><FONT COLOR=#CC0000><B> CommentLine</B></FONT>(BaseLine):
+    <FONT COLOR=#115511>"""A comment line."""</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,text):
+        <FONT COLOR=#115511>"""Instantiate a CommentLine.
+
+        The content of the tagtuple is:
+            ('comment',left,right,None)
+        and the demarcated text includes the initial '#' character
+        """</FONT>
+
+        BaseLine.__init__(self,lineno,indent_str,tagtuple,text)
+
+        <FONT COLOR=#1111CC># We actually want the next tuple down (so to speak) so that</FONT>
+        <FONT COLOR=#1111CC># we lose the trailing newline...</FONT>
+        tup = self.tagtuple[SUBLIST][0]
+        self.data = self.text[tup[LEFT]:tup[RIGHT]]
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" our_business"><FONT COLOR=#CC0000><B> our_business</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we are a line we understand."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 0
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" expand"><FONT COLOR=#CC0000><B> expand</B></FONT>(self,stream,block=None):
+        <FONT COLOR=#115511>"""Write out the expanded equivalent of ourselves.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+        """</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            stream.write(<FONT COLOR=#115511>"Line %3d: "</FONT>%self.lineno)
+
+        stream.write(self.indent_str)
+        stream.write(<FONT COLOR=#115511>"%s\n"</FONT>%self.data)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" PassThruLine"><FONT COLOR=#CC0000><B> PassThruLine</B></FONT>(BaseLine):
+    <FONT COLOR=#115511>"""A line we just pass throught without interpretation."""</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,text):
+        <FONT COLOR=#115511>"""Instantiate a PassThruLine.
+
+        The content of the tagtuple is:
+            ('passthru',left,right,None)
+        """</FONT>
+
+        BaseLine.__init__(self,lineno,indent_str,tagtuple,text)
+
+        <FONT COLOR=#1111CC># We actually want the next tuple down (so to speak) so that</FONT>
+        <FONT COLOR=#1111CC># we lose the trailing newline...</FONT>
+        tup = self.tagtuple[SUBLIST][0]
+        self.data = self.text[tup[LEFT]:tup[RIGHT]]
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" our_business"><FONT COLOR=#CC0000><B> our_business</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we are a line we understand."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 0
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" expand"><FONT COLOR=#CC0000><B> expand</B></FONT>(self,stream,block=None):
+        <FONT COLOR=#115511>"""Write out the expanded equivalent of ourselves.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+        """</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            stream.write(<FONT COLOR=#115511>"Line %3d: "</FONT>%self.lineno)
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> block:
+            err_str = <FONT COLOR=#115511>"Unparsed line inside a block"</FONT>\
+                      <FONT COLOR=#115511>" - it has been commented out"</FONT>
+            <FONT COLOR=#1111CC># Hmm - the following advice is less often useful than I</FONT>
+            <FONT COLOR=#1111CC># had hoped - leave it out for now...</FONT>
+            <FONT COLOR=#1111CC>#if </FONT>string.find(self.data,<FONT COLOR=#115511>","</FONT>) != -1:
+            <FONT COLOR=#1111CC>#    err_str = err_str + "\nCheck for a trailing comma?"</FONT>
+
+            self.error(err_str)
+
+        <FONT COLOR=#1111CC># Always output the indentation, 'cos otherwise it looks silly</FONT>
+        stream.write(self.indent_str)
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> block:
+            stream.write(<FONT COLOR=#115511>"#[ignored]#"</FONT>)
+
+        stream.write(<FONT COLOR=#115511>"%s\n"</FONT>%self.data)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" ContentLine"><FONT COLOR=#CC0000><B> ContentLine</B></FONT>(BaseLine):
+    <FONT COLOR=#115511>"""A line we have to interpret - another base class.
+
+    Adds the following variables:
+
+    comment -- any in-line comment on this line
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a ContentLine.
+
+        comment -- either a comment tuple or None
+
+        The content of the tagtuple is:
+            ('contentline',left,right,
+              [('content',left,right,[&lt;data&gt;]),
+               ('comment',left,right,None)      -- optional
+              ])
+        where &lt;data&gt; is used in the internals of one of our subclasses
+        (i.e., it is what is passed down in the "tagtuple" argument)
+        """</FONT>
+
+        BaseLine.__init__(self,lineno,indent_str,tagtuple,text)
+        self.comment = comment
+
+        <FONT COLOR=#1111CC># Assume we're not the last "our business" line in a block...</FONT>
+        self.is_last = 0
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_comment"><FONT COLOR=#CC0000><B> _write_comment</B></FONT>(self,stream,sofar):
+        <FONT COLOR=#115511>"""Write out the in-line comment string.
+
+        Since we're the only people to call this, we can safely
+        rely on it only being called when there IS a comment tuple
+        to output...
+
+        stream  -- an object with a "write" method, e.g., a file
+        sofar   -- the number of characters written to the line
+                   so far
+        """</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> sofar &lt; COMMENT_COLUMN:
+            stream.write(<FONT COLOR=#115511>" "</FONT>*(COMMENT_COLUMN - sofar))
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#1111CC># always write at least one space...</FONT>
+            stream.write(<FONT COLOR=#115511>" "</FONT>)
+        stream.write(self.text[self.comment[LEFT]:self.comment[RIGHT]])
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_text"><FONT COLOR=#CC0000><B> _write_text</B></FONT>(self,stream,block):
+        <FONT COLOR=#115511>"""Write out the main tuple text.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+
+        This should generally be the method that subclasses override.
+        It returns the number of characters written, or -1 if we had
+        an error.
+        """</FONT>
+        stream.write(self.text[self.tagtuple[LEFT]:self.tagtuple[RIGHT]])
+        <FONT COLOR=#3333CC><B>return</B></FONT> self.tagtuple[RIGHT] - self.tagtuple[LEFT]
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" expand"><FONT COLOR=#CC0000><B> expand</B></FONT>(self,stream,block=None):
+        <FONT COLOR=#115511>"""Write out the expanded equivalent of ourselves.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+        """</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            stream.write(<FONT COLOR=#115511>"Line %3d: "</FONT>%self.lineno)
+
+        stream.write(self.indent_str)
+        nchars = self._write_text(stream,block)
+        <FONT COLOR=#1111CC># Don't write any in-line comment out if we had an error,</FONT>
+        <FONT COLOR=#1111CC># as the layout won't work!</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> nchars &gt; -1 <FONT COLOR=#3333CC><B>and</B></FONT> self.comment:
+            self._write_comment(stream,sofar=nchars+self.indent)
+        stream.write(<FONT COLOR=#115511>"\n"</FONT>)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" LabelLine"><FONT COLOR=#CC0000><B> LabelLine</B></FONT>(ContentLine):
+    <FONT COLOR=#115511>"""A line containing a label.
+
+    Contains:
+        label -- our label string
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a LabelLine.
+
+        For instance:
+
+            &lt;fred&gt;
+
+        The content of the tagtuple is:
+
+            ('label',left,right,[
+              ('identifier',left,right,None)
+             ])
+        """</FONT>
+
+        ContentLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+
+        self.label = self.text[self.tagtuple[LEFT]:self.tagtuple[RIGHT]]
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_text"><FONT COLOR=#CC0000><B> _write_text</B></FONT>(self,stream,block):
+        <FONT COLOR=#115511>"""Write out the main tuple text.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+        """</FONT>
+        <FONT COLOR=#1111CC># Enough difficult length calculation - let's do this one</FONT>
+        <FONT COLOR=#1111CC># the easy way...</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            text = <FONT COLOR=#115511>"# Label %s at index %d"</FONT>%(self.label,self.index)
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            text = <FONT COLOR=#115511>"# %s"</FONT>%(self.label)  <FONT COLOR=#1111CC># surely enough for most people...</FONT>
+        stream.write(text)
+        <FONT COLOR=#3333CC><B>return</B></FONT> len(text)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" translate"><FONT COLOR=#CC0000><B> translate</B></FONT>(self,index,block):
+        <FONT COLOR=#115511>"""Return the translation of a use of this label as a target.
+
+        index -- the index of the line which uses the label as a target
+        block -- the Block we are within
+        """</FONT>
+
+        <FONT COLOR=#1111CC># Hmm - I don't think this CAN go wrong at this point...</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> block.translate_label(self.label,self)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" only_in_block"><FONT COLOR=#CC0000><B> only_in_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we can only occur inside a block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" TableBlockLine"><FONT COLOR=#CC0000><B> TableBlockLine</B></FONT>(ContentLine):
+    <FONT COLOR=#115511>"""A line starting a table block."""</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a TableBlockLine.
+
+        For instance:
+
+            "fred" = Table is:
+            Table is:
+
+        This is used for two purposes:
+        1. To define the actual tag table itself (i.e., at the outer
+           level). Only "Table" is allowed in this instance, but since
+           that is all we recognised for now, we shan't worry about it...
+        2. To define an inner table (i.e., at an inner level)
+
+        The content of the tagtuple is:
+
+            ('tableblock',left,right,[
+              ('assignment',left,right,[           -- optional if inner
+                 ('val',left,right,[
+
+                    ('identifier',left,right,[])
+                 OR
+                    ('str',left,right,[
+                       ('text',left,right,None)
+                     ])
+                 OR
+                    ('int',left,right,[])
+
+                  ])
+               ])
+              ('type',left,right,[])       -- either "Table" or "SubTable"
+             ])
+
+        NOTE: as an "emergency" measure (so we can `pretend' that a
+        TupleBlock was actually a TableBlock as part of attempted
+        error correction), if tagtuple == ("error",tagobj) then we
+        short-circuit some of the initialisation...
+        """</FONT>
+
+        ContentLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> tagtuple[0] == <FONT COLOR=#115511>"error"</FONT>:
+            <FONT COLOR=#1111CC># We're "bluffing" at the creation of a TableBlock</FONT>
+            self.tagobj = tagtuple[1]
+            self.is_subtable = 0
+        <FONT COLOR=#3333CC><B>elif</B></FONT> len(self.tagtuple[SUBLIST]) == 1:
+            self.tagobj = <FONT COLOR=#115511>"None"</FONT>
+            tup = self.tagtuple[SUBLIST][0]
+            self.is_subtable = (self.text[tup[LEFT]:tup[RIGHT]] == <FONT COLOR=#115511>"SubTable"</FONT>)
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#1111CC># The first tuple down gives us the "&lt;value&gt; = " string</FONT>
+            tup = self.tagtuple[SUBLIST][0]
+            <FONT COLOR=#1111CC># The next tuple down gives us "&lt;value&gt;" which is what we want</FONT>
+            tup = tup[SUBLIST][0]
+            self.tagobj = self.text[tup[LEFT]:tup[RIGHT]]
+            <FONT COLOR=#1111CC># Then we have the type of table</FONT>
+            tup = self.tagtuple[SUBLIST][1]
+            self.is_subtable = (self.text[tup[LEFT]:tup[RIGHT]] == <FONT COLOR=#115511>"SubTable"</FONT>)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" got_tagobj"><FONT COLOR=#CC0000><B> got_tagobj</B></FONT>(self):
+        <FONT COLOR=#3333CC><B>return</B></FONT> (self.tagobj != <FONT COLOR=#115511>"None"</FONT>)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" starts_block"><FONT COLOR=#CC0000><B> starts_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we start a new block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_text"><FONT COLOR=#CC0000><B> _write_text</B></FONT>(self,stream,block):
+        <FONT COLOR=#115511>"""Write out the main tuple text.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+
+        It returns the number of characters written, or -1 if we had
+        an error.
+        """</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> block:
+            <FONT COLOR=#3333CC><B>if</B></FONT> self.is_subtable:
+                stream.write(<FONT COLOR=#115511>"(%s,SubTable,("</FONT>%self.tagobj)
+                <FONT COLOR=#3333CC><B>return</B></FONT> len(self.tagobj) + 11
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                stream.write(<FONT COLOR=#115511>"(%s,Table,("</FONT>%self.tagobj)
+                <FONT COLOR=#3333CC><B>return</B></FONT> len(self.tagobj) + 8
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            stream.write(<FONT COLOR=#115511>"%s = ("</FONT>%self.tagobj)
+            <FONT COLOR=#3333CC><B>return</B></FONT> len(self.tagobj) + 4
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" TupleBlockLine"><FONT COLOR=#CC0000><B> TupleBlockLine</B></FONT>(ContentLine):
+    <FONT COLOR=#115511>"""A line starting a tuple block (i.e., defining a single tuple)
+
+    Contains:
+    
+        name -- the "name" of this tuple (i.e., what comes
+                before the "is:")
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a TupleBlockLine.
+
+        For instance:
+
+            Fred is:
+
+        The content of the tagtuple is:
+        
+            ('tupleblock',left,right,[
+              ('identifier',left,right,None)
+             ])
+        """</FONT>
+
+        ContentLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+
+        tup = self.tagtuple[SUBLIST][0]
+        self.name = self.text[tup[LEFT]:tup[RIGHT]]
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" starts_block"><FONT COLOR=#CC0000><B> starts_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we start a new block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" only_in_block"><FONT COLOR=#CC0000><B> only_in_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we can only occur inside a block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 0
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_text"><FONT COLOR=#CC0000><B> _write_text</B></FONT>(self,stream,block):
+        <FONT COLOR=#115511>"""Write out the main tuple text.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+
+        It returns the number of characters written, or -1 if we had
+        an error.
+        """</FONT>
+        <FONT COLOR=#1111CC># The "\" at the end is somewhat clumsy looking, but the</FONT>
+        <FONT COLOR=#1111CC># only obvious way of preserving layout...</FONT>
+        stream.write(<FONT COLOR=#115511>"%s = \\"</FONT>%self.name)
+        <FONT COLOR=#3333CC><B>return</B></FONT> len(self.name) + 5
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" IfBlockLine"><FONT COLOR=#CC0000><B> IfBlockLine</B></FONT>(ContentLine):
+    <FONT COLOR=#115511>"""A line starting an if block.
+
+    Contains:
+        cmd  -- the command within this if block
+        arg  -- the argument for said command
+    or:
+        name -- the name within this if block
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate an IfBlockLine.
+
+        For instance:
+
+            'jim' = Is "Fred":
+            Is "Fred":
+            fred:
+
+        The content of the tagtuple is:
+
+            ('ifblock',left,right,[
+              ('assignment',left,right,[
+                 ('val',left,right,[
+
+                    ('identifier',left,right,[])
+                 OR
+                    ('str',left,right,[
+                       ('text',left,right,None)
+                     ])
+                 OR
+                    ('int',left,right,[])
+
+                  ])
+               ])
+              ('op',left,right,None),
+              ('arg',left,right,None),
+             ])
+        or:
+            ('ifblock',left,right,[
+              ('op',left,right,None),
+              ('arg',left,right,None),
+             ])
+        or:
+            ('ifblock',left,right,[
+              ('identifier',left,right,None)
+             ])
+        """</FONT>
+
+        ContentLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+
+        tuples = self.tagtuple[SUBLIST]
+        <FONT COLOR=#3333CC><B>if</B></FONT> tuples[0][OBJECT] == <FONT COLOR=#115511>'op'</FONT>:
+            tup1 = tuples[0]
+            tup2 = tuples[1]
+            self.tagobj = <FONT COLOR=#115511>"None"</FONT>
+            self.cmd    = self.text[tup1[LEFT]:tup1[RIGHT]]
+            self.arg    = self.text[tup2[LEFT]:tup2[RIGHT]]
+            self.name   = None
+        <FONT COLOR=#3333CC><B>elif</B></FONT> tuples[0][OBJECT] == <FONT COLOR=#115511>'assignment'</FONT>:
+            <FONT COLOR=#1111CC># The "&lt;value&gt;" in the "&lt;value&gt; = " string is down</FONT>
+            <FONT COLOR=#1111CC># one level more than the others</FONT>
+            tup0 = tuples[0][SUBLIST][0]
+            self.tagobj = self.text[tup0[LEFT]:tup0[RIGHT]]
+            tup1 = tuples[1]
+            tup2 = tuples[2]
+            self.cmd    = self.text[tup1[LEFT]:tup1[RIGHT]]
+            self.arg    = self.text[tup2[LEFT]:tup2[RIGHT]]
+            self.name   = None
+        <FONT COLOR=#3333CC><B>elif</B></FONT> tuples[0][OBJECT] == <FONT COLOR=#115511>'identifier'</FONT>:
+            tup = tuples[0]
+            self.name   = self.text[tup[LEFT]:tup[RIGHT]]
+            self.cmd    = None
+            self.arg    = None
+            self.tagobj = None
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#1111CC># Hmm - try to continue with anything unexpected</FONT>
+            tup = tuples[0]
+            self.error(<FONT COLOR=#115511>"Unexpected IfBlock subtype %s"</FONT>%tup[OBJECT])
+            self.name   = self.text[tup[LEFT]:tup[RIGHT]]
+            self.cmd    = None
+            self.arg    = None
+            self.tagobj = None
+
+        <FONT COLOR=#1111CC># Currently, we have one 'special' argument</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.arg == <FONT COLOR=#115511>"back"</FONT>: self.arg = <FONT COLOR=#115511>"-1"</FONT>
+
+        <FONT COLOR=#1111CC># We don't yet know the offset of the "virtual label" at the</FONT>
+        <FONT COLOR=#1111CC># end of this if block...</FONT>
+        self.end_label = None
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" starts_block"><FONT COLOR=#CC0000><B> starts_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we start a new block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" only_in_block"><FONT COLOR=#CC0000><B> only_in_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we can only occur inside a block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" resolve_labels"><FONT COLOR=#CC0000><B> resolve_labels</B></FONT>(self,block):
+        <FONT COLOR=#115511>"""Called to resolve any labels used in this line.
+
+        block -- the block that contains us
+
+        Note that this only does something the first time it
+        is called - this will be when the IF block's startline
+        is asked to resolve its labels. If it is called again,
+        as a 'normal' line, it will do nothing...
+        """</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.end_label:
+            self.end_label = <FONT COLOR=#115511>"%+d"</FONT>%(len(block.business)+1)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_text"><FONT COLOR=#CC0000><B> _write_text</B></FONT>(self,stream,block):
+        <FONT COLOR=#115511>"""Write out the main tuple text.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+
+        It returns the number of characters written, or -1 if we had
+        an error.
+        """</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.end_label:
+            <FONT COLOR=#1111CC># This should never happen, but just in case, warn the user!</FONT>
+            self.error(<FONT COLOR=#115511>"Unable to determine 'onFalse' destination in IF"</FONT>)
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.name:
+            stream.write(<FONT COLOR=#115511>"%s + (%s,+1),"</FONT>%(self.name,
+                                          self.end_label <FONT COLOR=#3333CC><B>or</B></FONT> <FONT COLOR=#115511>"&lt;undefined&gt;"</FONT>))
+            <FONT COLOR=#3333CC><B>return</B></FONT> len(self.name) + 20
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            stream.write(<FONT COLOR=#115511>"(%s,%s,%s,%s,+1),"</FONT>%(self.tagobj,self.cmd,self.arg,
+                                              self.end_label <FONT COLOR=#3333CC><B>or</B></FONT> <FONT COLOR=#115511>"&lt;undefined&gt;"</FONT>))
+            <FONT COLOR=#3333CC><B>return</B></FONT> len(self.tagobj) + len(self.cmd) + len(self.arg) + \
+                   len(self.end_label) + 20
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" TupleLine"><FONT COLOR=#CC0000><B> TupleLine</B></FONT>(ContentLine):
+    <FONT COLOR=#115511>"""A line containing a basic tuple.
+
+
+    Contains:
+        tagobj  -- optional
+        cmd     -- the command
+        arg     -- the argument
+        ontrue  -- what to do if true
+        onfalse -- ditto false
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a TupleLine.
+
+        The content of the tagtuple is:
+        
+            ('tuple',left,right,[
+              ('tagobj',left,right,[           -- optional
+                 ('str',left,right,[
+                    ('text',left,right,None)
+                  ])
+               ])
+              ('op',left,right,None),
+              ('arg',left,right,None),
+              ('onfalse',left,right,[          -- optional
+                 ('target',left,right,[
+                   ('tgt',left,right,None)
+                 ]),
+              ('ontrue',left,right,[           -- optional
+                 ('target',left,right,[
+                   ('tgt',left,right,None)
+                 ])
+               ])
+             ])
+        """</FONT>
+
+        ContentLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+
+        self.unpack()
+
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" unpack"><FONT COLOR=#CC0000><B> unpack</B></FONT>(self):
+        <FONT COLOR=#115511>"""Unpack our contents from our tagtuple."""</FONT>
+
+        <FONT COLOR=#1111CC># This is doubtless not the most efficient way of doing this,</FONT>
+        <FONT COLOR=#1111CC># but it IS relatively simple...</FONT>
+        dict = {}
+        <FONT COLOR=#1111CC>#for </FONT>key <FONT COLOR=#3333CC><B>in</B></FONT> (<FONT COLOR=#115511>"assignment"</FONT>,<FONT COLOR=#115511>"op"</FONT>,<FONT COLOR=#115511>"arg"</FONT>,<FONT COLOR=#115511>"onfalse"</FONT>,<FONT COLOR=#115511>"ontrue"</FONT>):
+        <FONT COLOR=#3333CC><B>for</B></FONT> key <FONT COLOR=#3333CC><B>in</B></FONT> (<FONT COLOR=#115511>"assignment"</FONT>,<FONT COLOR=#115511>"op"</FONT>,<FONT COLOR=#115511>"plusarg"</FONT>,<FONT COLOR=#115511>"onfalse"</FONT>,<FONT COLOR=#115511>"ontrue"</FONT>):
+            dict[key] = None
+
+        tuples = self.tagtuple[SUBLIST]
+        <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> tuples:
+            name = item[OBJECT]
+            <FONT COLOR=#3333CC><B>if</B></FONT> name == <FONT COLOR=#115511>"onfalse"</FONT> <FONT COLOR=#3333CC><B>or</B></FONT> name == <FONT COLOR=#115511>"ontrue"</FONT> <FONT COLOR=#3333CC><B>or</B></FONT> name == <FONT COLOR=#115511>"assignment"</FONT>:
+                <FONT COLOR=#1111CC># For these, we need to go "down one level" for our data</FONT>
+                tup = item[SUBLIST][0]
+                dict[name] = (tup[LEFT],tup[RIGHT])
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                dict[name] = (item[LEFT],item[RIGHT])
+
+        <FONT COLOR=#1111CC># The tag object is optional</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> dict[<FONT COLOR=#115511>"assignment"</FONT>]:
+            left,right = dict[<FONT COLOR=#115511>"assignment"</FONT>]
+            self.tagobj = self.text[left:right]
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            self.tagobj = <FONT COLOR=#115511>"None"</FONT>
+
+        <FONT COLOR=#1111CC># The operation (command) and argument are required</FONT>
+        left,right = dict[<FONT COLOR=#115511>"op"</FONT>]
+        self.cmd = self.text[left:right]
+
+        <FONT COLOR=#1111CC>#left,right = dict["arg"]</FONT>
+        left,right = dict[<FONT COLOR=#115511>"plusarg"</FONT>]
+        self.arg = self.text[left:right]
+
+        <FONT COLOR=#1111CC># Currently, we have one 'special' argument</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.arg == <FONT COLOR=#115511>"back"</FONT>: self.arg = <FONT COLOR=#115511>"-1"</FONT>
+
+        <FONT COLOR=#1111CC># Actually, we don't want the F and T jumps explicit if not</FONT>
+        <FONT COLOR=#1111CC># given, since we mustn't output them for a single tuple if</FONT>
+        <FONT COLOR=#1111CC># they're not given (so they can be "added in" later on)</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> dict[<FONT COLOR=#115511>"onfalse"</FONT>]:
+            left,right = dict[<FONT COLOR=#115511>"onfalse"</FONT>]
+            self.onfalse = self.text[left:right]
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            self.onfalse = None		<FONT COLOR=#1111CC># "MatchFail"</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> dict[<FONT COLOR=#115511>"ontrue"</FONT>]:
+            left,right = dict[<FONT COLOR=#115511>"ontrue"</FONT>]
+            self.ontrue = self.text[left:right]
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            self.ontrue = None 		<FONT COLOR=#1111CC># "next"</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" only_in_block"><FONT COLOR=#CC0000><B> only_in_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we can only occur inside a block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" resolve_labels"><FONT COLOR=#CC0000><B> resolve_labels</B></FONT>(self,block):
+        <FONT COLOR=#115511>"""Called to resolve any labels use in this line.
+
+        block -- the block that contains us
+        """</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.onfalse:
+            self.onfalse = block.translate_label(self.onfalse,self)
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.ontrue:
+            self.ontrue  = block.translate_label(self.ontrue,self)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_text"><FONT COLOR=#CC0000><B> _write_text</B></FONT>(self,stream,block):
+        <FONT COLOR=#115511>"""Write out the main tuple text.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+
+        It returns the number of characters written, or -1 if we had
+        an error.
+        """</FONT>
+
+        <FONT COLOR=#1111CC># Start with the stuff we must have...</FONT>
+        stream.write(<FONT COLOR=#115511>"(%s,%s,%s"</FONT>%(self.tagobj,self.cmd,self.arg))
+        length = len(self.tagobj) + len(self.cmd) + len(self.arg) + 3
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.ontrue:
+            <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.onfalse:
+                <FONT COLOR=#1111CC># OK, we didn't get an explicit F, but because it comes</FONT>
+                <FONT COLOR=#1111CC># before the T jump in the tuple, we need to fake it</FONT>
+                <FONT COLOR=#1111CC># anyway...</FONT>
+                stream.write(<FONT COLOR=#115511>",%s,%s)"</FONT>%(<FONT COLOR=#115511>"MatchFail"</FONT>,self.ontrue))
+                length = length + len(<FONT COLOR=#115511>"MatchFail"</FONT>) + len(self.ontrue) + 3
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                <FONT COLOR=#1111CC># We had both F and T</FONT>
+                stream.write(<FONT COLOR=#115511>",%s,%s)"</FONT>%(self.onfalse,self.ontrue))
+                length = length + len(self.onfalse) + len(self.ontrue) + 3
+        <FONT COLOR=#3333CC><B>elif</B></FONT> self.onfalse:
+            <FONT COLOR=#1111CC># We only had F. We shan't "fake" the T jump, *just* in case</FONT>
+            <FONT COLOR=#1111CC># the user is defining a single tuple that they'll add the</FONT>
+            <FONT COLOR=#1111CC># T jump to later on (although that *is* a bit dodgy, I think)</FONT>
+            <FONT COLOR=#1111CC># [[The option would be to "fake" it if we're IN a block - I may</FONT>
+            <FONT COLOR=#1111CC>#   go for that approach later on]]</FONT>
+            stream.write(<FONT COLOR=#115511>",%s)"</FONT>%self.onfalse)
+            length = length + len(self.onfalse) + 2
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#1111CC># Neither F nor T - so don't write the defaults for either,</FONT>
+            <FONT COLOR=#1111CC># in case this is a top level tuple they're going to add to</FONT>
+            <FONT COLOR=#1111CC># later on...</FONT>
+            <FONT COLOR=#1111CC># [[Comments as for the case above, I think]]</FONT>
+            stream.write(<FONT COLOR=#115511>")"</FONT>)
+            length = length + 1
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> block <FONT COLOR=#3333CC><B>and</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.is_last:
+            stream.write(<FONT COLOR=#115511>","</FONT>)
+            length = length + 1
+
+        <FONT COLOR=#3333CC><B>return</B></FONT> length
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" TuplePlusLine"><FONT COLOR=#CC0000><B> TuplePlusLine</B></FONT>(ContentLine):
+    <FONT COLOR=#115511>"""A line containing a tuple "plus" (e.g., "fred + (+1,+1)").
+
+    Contains:
+
+        name    -- the name/identifier
+        ontrue  -- what to do if true
+        onfalse -- ditto false
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a TuplePlusLine.
+
+            &lt;identifier&gt; + (onF,onT)
+
+        The content of the tagtuple is:
+        
+            ('tupleplus',left,right,[
+              ('identifier',left,right,None)
+              ('onfalse',left,right,[          -- optional
+                 ('target',left,right,[
+                   ('tgt',left,right,None)
+                 ]),
+              ('ontrue',left,right,[           -- optional
+                 ('target',left,right,[
+                   ('tgt',left,right,None)
+                 ])
+               ])
+             ])
+        """</FONT>
+
+        ContentLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+
+        self.unpack()
+
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" unpack"><FONT COLOR=#CC0000><B> unpack</B></FONT>(self):
+        <FONT COLOR=#115511>"""Unpack our contents from our tagtuple."""</FONT>
+
+        <FONT COLOR=#1111CC># This is doubtless not the most efficient way of doing this,</FONT>
+        <FONT COLOR=#1111CC># but it IS relatively simple...</FONT>
+        dict = {}
+        <FONT COLOR=#3333CC><B>for</B></FONT> key <FONT COLOR=#3333CC><B>in</B></FONT> (<FONT COLOR=#115511>"identifier"</FONT>,<FONT COLOR=#115511>"onfalse"</FONT>,<FONT COLOR=#115511>"ontrue"</FONT>):
+            dict[key] = None
+
+        tuples = self.tagtuple[SUBLIST]
+        <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> tuples:
+            name = item[OBJECT]
+            <FONT COLOR=#3333CC><B>if</B></FONT> name == <FONT COLOR=#115511>"onfalse"</FONT> <FONT COLOR=#3333CC><B>or</B></FONT> name == <FONT COLOR=#115511>"ontrue"</FONT>:
+                <FONT COLOR=#1111CC># For these, we need to go "down one level" for our data</FONT>
+                tup = item[SUBLIST][0]
+                dict[name] = (tup[LEFT],tup[RIGHT])
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                dict[name] = (item[LEFT],item[RIGHT])
+
+        <FONT COLOR=#1111CC># Start with the identifier</FONT>
+        left,right = dict[<FONT COLOR=#115511>"identifier"</FONT>]
+        self.name = self.text[left:right]
+
+        <FONT COLOR=#1111CC># Actually, we don't want the F and T jumps explicit if not</FONT>
+        <FONT COLOR=#1111CC># given, since we mustn't output them for a single tuple if</FONT>
+        <FONT COLOR=#1111CC># they're not given (so they can be "added in" later on)</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> dict[<FONT COLOR=#115511>"onfalse"</FONT>]:
+            left,right = dict[<FONT COLOR=#115511>"onfalse"</FONT>]
+            self.onfalse = self.text[left:right]
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            self.onfalse = None		<FONT COLOR=#1111CC># "MatchFail"</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> dict[<FONT COLOR=#115511>"ontrue"</FONT>]:
+            left,right = dict[<FONT COLOR=#115511>"ontrue"</FONT>]
+            self.ontrue = self.text[left:right]
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            self.ontrue = None 		<FONT COLOR=#1111CC># "next"</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" only_in_block"><FONT COLOR=#CC0000><B> only_in_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we can only occur inside a block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" resolve_labels"><FONT COLOR=#CC0000><B> resolve_labels</B></FONT>(self,block):
+        <FONT COLOR=#115511>"""Called to resolve any labels use in this line.
+
+        block -- the block that contains us
+        """</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.onfalse:
+            self.onfalse = block.translate_label(self.onfalse,self)
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.ontrue:
+            self.ontrue  = block.translate_label(self.ontrue,self)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_text"><FONT COLOR=#CC0000><B> _write_text</B></FONT>(self,stream,block):
+        <FONT COLOR=#115511>"""Write out the main tuple text.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+
+        It returns the number of characters written, or -1 if we had
+        an error.
+        """</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.onfalse <FONT COLOR=#3333CC><B>and</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.ontrue:
+            stream.write(<FONT COLOR=#115511>"%s"</FONT>%self.name)
+            length = len(self.name)
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#1111CC># Make a feeble attempt to cause successive such lines to</FONT>
+            <FONT COLOR=#1111CC># look neater, by aligning the "+" signs (if we output them)</FONT>
+            stream.write(<FONT COLOR=#115511>"%-15s + ("</FONT>%(self.name))
+            length = max(len(self.name),15) + 4
+            <FONT COLOR=#3333CC><B>if</B></FONT> self.ontrue <FONT COLOR=#3333CC><B>and</B></FONT> self.onfalse:
+                stream.write(<FONT COLOR=#115511>"%s,%s)"</FONT>%(self.onfalse,self.ontrue))
+                length = length + len(self.onfalse) + len(self.ontrue) + 2
+            <FONT COLOR=#3333CC><B>elif</B></FONT> self.ontrue:
+                stream.write(<FONT COLOR=#115511>"MatchFail,%s)"</FONT>%(self.ontrue))
+                length = length + len(self.ontrue) + 11
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                <FONT COLOR=#1111CC># Don't forget that comma to make this a tuple!</FONT>
+                stream.write(<FONT COLOR=#115511>"%s,)"</FONT>%(self.onfalse))
+                length = length + len(self.onfalse) + 1
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.is_last:
+            stream.write(<FONT COLOR=#115511>","</FONT>)
+            length = length + 1
+
+        <FONT COLOR=#3333CC><B>return</B></FONT> length
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" JumpToLine"><FONT COLOR=#CC0000><B> JumpToLine</B></FONT>(ContentLine):
+    <FONT COLOR=#115511>"""A line containing "Jump To &lt;label&gt;"
+
+    Contains:
+
+        name    -- the name/identifier
+        onfalse -- the target (which is technically an "on false" jump)
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a JumpLine.
+
+            Jump To &lt;label&gt;
+
+        The content of the tagtuple is:
+        
+            ('jumpto',left,right,[
+               ('target',left,right,[
+                 ('tgt',left,right,None)
+               ]),
+             ])
+        """</FONT>
+
+        ContentLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+
+        tup = self.tagtuple[SUBLIST][0]
+        self.onfalse = self.text[tup[LEFT]:tup[RIGHT]]
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" only_in_block"><FONT COLOR=#CC0000><B> only_in_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""Return true if we can only occur inside a block."""</FONT>
+        <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" resolve_labels"><FONT COLOR=#CC0000><B> resolve_labels</B></FONT>(self,block):
+        <FONT COLOR=#115511>"""Called to resolve any labels use in this line.
+
+        block -- the block that contains us
+        """</FONT>
+        self.onfalse = block.translate_label(self.onfalse,self)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _write_text"><FONT COLOR=#CC0000><B> _write_text</B></FONT>(self,stream,block):
+        <FONT COLOR=#115511>"""Write out the main tuple text.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- used to pass the containing Block down to lines
+                   within a block, or None if we're not in a block
+
+        It returns the number of characters written, or -1 if we had
+        an error.
+        """</FONT>
+
+        stream.write(<FONT COLOR=#115511>"(None,Jump,To,%s)"</FONT>%(self.onfalse))
+        length = len(self.onfalse) + 15
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.is_last:
+            stream.write(<FONT COLOR=#115511>","</FONT>)
+            length = length + 1
+
+        <FONT COLOR=#3333CC><B>return</B></FONT> length
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" BadTableBlockLine"><FONT COLOR=#CC0000><B> BadTableBlockLine</B></FONT>(TableBlockLine):
+    <FONT COLOR=#115511>"""We think they MEANT this to be a table block line."""</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a BadTableBlockLine.
+
+        For instance:
+
+            "fred" = Table:
+            Table:
+        """</FONT>
+        TableBlockLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+        self.error(<FONT COLOR=#115511>"Suspected missing 'is' before the colon\n"</FONT>
+                   <FONT COLOR=#115511>"pretending it's there"</FONT>)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" BadTupleLine"><FONT COLOR=#CC0000><B> BadTupleLine</B></FONT>(TupleLine):
+    <FONT COLOR=#115511>"""We think they MEANT this to be a tuple line."""</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,lineno,indent_str,tagtuple,comment,text):
+        <FONT COLOR=#115511>"""Instantiate a BadTupleLine.
+
+        For instance:
+
+            "fred" = IsIn "abc"
+        """</FONT>
+        TupleLine.__init__(self,lineno,indent_str,tagtuple,comment,text)
+        self.error(<FONT COLOR=#115511>"Suspected missing '=' between tag object and command\n"</FONT>
+                   <FONT COLOR=#115511>"pretending it's there"</FONT>)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" Block"><FONT COLOR=#CC0000><B> Block</B></FONT>(ContentLine):
+    <FONT COLOR=#115511>"""This class represents a "block".
+
+    A "block" is a section of code which starts with a line ending in
+    a colon (":"), with the next line and subsequent lines ("in" the
+    block) having an extra indent. The block ends when a dedent is
+    encountered.
+
+    Each instance "eats" lines from the input until (if) it finds the first
+    "sub" block.  That then "eats" lines until it finds its own end, and
+    then hands control back to the first instance, which does the same thing
+    again, and so on.
+
+    Note that we "pretend" to be a content line - it is convenient to
+    look like a line class, so that line processing can cope with us,
+    and indeed what we do is "pretend" to be a clone of our start line
+    with some extra information...
+
+    Contains:
+        startline    -- the line that "introduces" this block
+        items        -- a list of the lines and blocks within this block
+        label_dict   -- a dictionary of {label name : line index}
+        inner_indent -- the indentation of our "inner" lines
+        outer        -- true if we are an "outer" block
+                        (i.e., not contained within another block)
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,startline=None,outer=0,file=None):
+        <FONT COLOR=#115511>"""Instantiate a new block.
+
+        startline -- the line that introduces this block
+        outer     -- true if we are an outer block
+        file      -- the "file" we're reading lines from
+        """</FONT>
+
+        <FONT COLOR=#1111CC># Pretend to be our own startline (as a generic)</FONT>
+        ContentLine.__init__(self,
+                             startline.lineno,startline.indent_str,
+                             startline.tagtuple,startline.comment,
+                             startline.text)
+
+        <FONT COLOR=#1111CC># But also remember the specifics of the startline</FONT>
+        self.startline = startline
+
+        <FONT COLOR=#1111CC># We "fudge" our class name</FONT>
+        self.class_name = self._block_class_name(startline)
+
+        self.outer    = outer
+        self.file     = file
+
+        <FONT COLOR=#1111CC># If we're an outer table block, do we have a tagobj?</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.startline.class_name == <FONT COLOR=#115511>"TableBlockLine"</FONT> <FONT COLOR=#3333CC><B>and</B></FONT> outer:
+            <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.startline.got_tagobj():
+                <FONT COLOR=#3333CC><B>raise</B></FONT> NoIdentifier,\
+                      <FONT COLOR=#115511>"Tag table at line %d is not assigned to a variable"</FONT>%\
+                      (self.lineno)
+            <FONT COLOR=#3333CC><B>elif</B></FONT> self.startline.is_subtable:
+                <FONT COLOR=#3333CC><B>raise</B></FONT> OutsideError,\
+                      <FONT COLOR=#115511>"SubTable is not allowed outside a block at line %d"</FONT>%\
+                      (self.lineno)
+
+        self.items    = []	<FONT COLOR=#1111CC># all lines within this block</FONT>
+        self.business = []	<FONT COLOR=#1111CC># just those that are "our business"</FONT>
+        self.label_dict = {}    <FONT COLOR=#1111CC># remember our labels and their locations</FONT>
+        self.next_index = 0     <FONT COLOR=#1111CC># 'business' line indices</FONT>
+        self.inner_indent = None
+
+        <FONT COLOR=#1111CC># Eat lines until we reach the end of our block...</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sStart %s"</FONT>%(self.indent_str,self.class_name)
+        self._eat_lines()
+        self._end_block()
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _block_class_name"><FONT COLOR=#CC0000><B> _block_class_name</B></FONT>(self,startline):
+        <FONT COLOR=#115511>"""Return a representation of the class name."""</FONT>
+
+        full_name = <FONT COLOR=#115511>"%s"</FONT>%self.__class__
+        bits = string.split(full_name,<FONT COLOR=#115511>"."</FONT>)
+        <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"%s/%s"</FONT>%(bits[-1],startline.class_name)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _eat_lines"><FONT COLOR=#CC0000><B> _eat_lines</B></FONT>(self):
+        <FONT COLOR=#115511>"""Eat lines until we run out of block..."""</FONT>
+
+        <FONT COLOR=#3333CC><B>while</B></FONT> 1:
+            <FONT COLOR=#3333CC><B>try</B></FONT>:
+                nextline = self.file.next()
+            <FONT COLOR=#3333CC><B>except</B></FONT> EOFError:
+                <FONT COLOR=#3333CC><B>return</B></FONT>
+
+            <FONT COLOR=#1111CC># Check the indentation makes sense...</FONT>
+            <FONT COLOR=#3333CC><B>if</B></FONT> self.inner_indent:
+                <FONT COLOR=#1111CC># We already know how much our block is indented</FONT>
+                <FONT COLOR=#1111CC># - is this line part of the block?</FONT>
+                <FONT COLOR=#3333CC><B>if</B></FONT> nextline.indent &lt; self.inner_indent:
+                    <FONT COLOR=#1111CC># Apparently a dedent - is it what we expect?</FONT>
+                    <FONT COLOR=#3333CC><B>if</B></FONT> nextline.indent &lt;= self.indent:
+                        <FONT COLOR=#1111CC># Unread that line - it isn't one of ours!</FONT>
+                        self.file.unget()
+                        <FONT COLOR=#3333CC><B>return</B></FONT>
+                    <FONT COLOR=#3333CC><B>else</B></FONT>:
+                        <FONT COLOR=#3333CC><B>raise</B></FONT> IndentError,\
+                              <FONT COLOR=#115511>"Line %d (%s) is indented less than the previous "</FONT>\
+                              <FONT COLOR=#115511>"line, but its indentation doesn't match the "</FONT>\
+                              <FONT COLOR=#115511>"start of the block at line %d"</FONT>%\
+                              (nextline.lineno,nextline.class_name,self.lineno)
+                <FONT COLOR=#3333CC><B>elif</B></FONT> nextline.indent &gt; self.inner_indent:
+                    <FONT COLOR=#1111CC># A spurious indent</FONT>
+                    <FONT COLOR=#1111CC># (note that doing this stops us from coping with,</FONT>
+                    <FONT COLOR=#1111CC>#  for instance, things in (..), but then we also don't</FONT>
+                    <FONT COLOR=#1111CC>#  cope with any form of continued line, or lots of other</FONT>
+                    <FONT COLOR=#1111CC>#  things, so let's not worry too much for now!)</FONT>
+                    <FONT COLOR=#3333CC><B>raise</B></FONT> IndentError,\
+                          <FONT COLOR=#115511>"Line %d (%s) is indented more than the previous line"</FONT>%\
+                          (nextline.lineno,nextline.class_name)
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                <FONT COLOR=#1111CC># This is the first line of the (inside of) the block</FONT>
+                <FONT COLOR=#1111CC># - check its indentation makes sense...</FONT>
+                self.inner_indent = nextline.indent
+                <FONT COLOR=#3333CC><B>if</B></FONT> self.inner_indent &lt;= self.indent:
+                    <FONT COLOR=#3333CC><B>raise</B></FONT> IndentError,\
+                          <FONT COLOR=#115511>"Line %d (%s) should be indented more than line %d (%s)"</FONT>%\
+                          (nextline.lineno,nextline.class_name,
+                           self.lineno,self.startline.class_name)
+
+            <FONT COLOR=#1111CC># Is it a line or the start of another block?</FONT>
+            <FONT COLOR=#3333CC><B>if</B></FONT> nextline.starts_block():
+                <FONT COLOR=#1111CC># Heh - it's the start of an inner block - add it</FONT>
+                <FONT COLOR=#1111CC># (remember that instantiating it causes it to</FONT>
+                <FONT COLOR=#1111CC>#  "eat" the lines that belong to it)</FONT>
+                self.items.append(Block(startline=nextline,
+                                        outer=0,file=self.file))
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                self.items.append(nextline)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _end_block"><FONT COLOR=#CC0000><B> _end_block</B></FONT>(self):
+        <FONT COLOR=#115511>"""End our block"""</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sEnd %s"</FONT>%(self.indent_str,self.class_name)
+
+        <FONT COLOR=#1111CC># If we're a tuple block, we should only have one line...</FONT>
+        <FONT COLOR=#1111CC># (that is, one "business" line)</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.startline.class_name == <FONT COLOR=#115511>"TupleBlockLine"</FONT> <FONT COLOR=#3333CC><B>and</B></FONT> \
+           len(self.items) &gt; 1:
+            <FONT COLOR=#1111CC># Are all but one of them not "our business"?</FONT>
+            count = 0
+            <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> self.items:
+                <FONT COLOR=#3333CC><B>if</B></FONT> item.our_business():
+                    count = count + 1
+                    <FONT COLOR=#3333CC><B>if</B></FONT> count &gt; 1: <FONT COLOR=#3333CC><B>break</B></FONT>
+            <FONT COLOR=#3333CC><B>if</B></FONT> count &gt; 1:
+                self.error(<FONT COLOR=#115511>"Tuple declaration can only contain one 'business'"</FONT>
+                           <FONT COLOR=#115511>" line, not %d\n"</FONT>
+                           <FONT COLOR=#115511>"Assuming it's a table instead (i.e.,"</FONT>
+                           <FONT COLOR=#115511>"'Table is:' instead of 'is:')"</FONT>%len(self.items))
+                <FONT COLOR=#1111CC># Can we correct this by "pretending" its a table?</FONT>
+                temp = TableBlockLine(self.startline.lineno,
+                                      self.startline.indent_str,
+                                      (<FONT COLOR=#115511>"error"</FONT>,self.startline.name),
+                                      self.startline.comment,
+                                      self.text)
+                self.startline = temp
+
+        <FONT COLOR=#1111CC># We've now got all of our lines, and so we can go back over</FONT>
+        <FONT COLOR=#1111CC># them, expanding out any IF blocks (whose content is actually</FONT>
+        <FONT COLOR=#1111CC># within this block's scope, so who need to have their labels</FONT>
+        <FONT COLOR=#1111CC># (come from or go to) in that scope), working out the label</FONT>
+        <FONT COLOR=#1111CC># indices, and so on...</FONT>
+        <FONT COLOR=#1111CC># This uses "next_index" to calculate the indices of business</FONT>
+        <FONT COLOR=#1111CC># lines (needed for label calculation), and also populates the</FONT>
+        <FONT COLOR=#1111CC># "business" list with just the items that are "our_business()"</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Expanding IF blocks, sorting out labels, etc."</FONT>
+
+        temp       = self.items
+        self.items = []
+        <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> temp:
+            <FONT COLOR=#3333CC><B>if</B></FONT> item.class_name == <FONT COLOR=#115511>"Block/IfBlockLine"</FONT>:
+                self._add(item.startline)
+                <FONT COLOR=#3333CC><B>for</B></FONT> thing <FONT COLOR=#3333CC><B>in</B></FONT> item.items:
+                    self._add(thing)
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                self._add(item)
+
+        <FONT COLOR=#1111CC># Go back through our contents and resolve any labels</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%s...processing labels (next_index=%d)"</FONT>%(self.indent_str,
+                                                            self.next_index)
+        self.startline.resolve_labels(self)
+        <FONT COLOR=#1111CC># If we're an IF block, we mustn't try to resolve our component</FONT>
+        <FONT COLOR=#1111CC># lines' labels, as they're actually in our parent block's scope...</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.startline.class_name != <FONT COLOR=#115511>"IfBlockLine"</FONT>:
+            <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> self.items:
+                item.resolve_labels(self)
+
+        <FONT COLOR=#1111CC># If we're in a block that wants to suppress the comma at the</FONT>
+        <FONT COLOR=#1111CC># end of the last item in that block, tell the last item so...</FONT>
+        <FONT COLOR=#1111CC># (this is debatable for [Bad]TableBlockLine - it might be</FONT>
+        <FONT COLOR=#1111CC># better to leave the last comma there - so we have an option</FONT>
+        <FONT COLOR=#1111CC># to determine it...</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.startline.class_name == <FONT COLOR=#115511>"TupleBlockLine"</FONT> <FONT COLOR=#3333CC><B>or</B></FONT> \
+           (<FONT COLOR=#3333CC><B>not</B></FONT> WANT_LAST_COMMA <FONT COLOR=#3333CC><B>and</B></FONT> \
+            (self.startline.class_name == <FONT COLOR=#115511>"TableBlockLine"</FONT> <FONT COLOR=#3333CC><B>or</B></FONT> \
+             self.startline.class_name == <FONT COLOR=#115511>"BadTableBlockLine"</FONT>)):
+            <FONT COLOR=#3333CC><B>if</B></FONT> len(self.business) &gt; 0:
+                self.business[-1].is_last = 1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" _add"><FONT COLOR=#CC0000><B> _add</B></FONT>(self,item):
+        <FONT COLOR=#115511>"""Add a line or block to our list of items.
+
+        item -- the Line or Block instance to add
+
+        NB: Also adds it to our "business" list if it is our business
+            (and not a label)
+        """</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> item.class_name == <FONT COLOR=#115511>"LabelLine"</FONT>:
+            self.label_dict[item.label] = self.next_index
+            <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+                <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sadd [%2d] %s"</FONT>%(item.indent_str,self.next_index,item)
+            <FONT COLOR=#1111CC># Might as well give it the index it is labelling</FONT>
+            item.index = self.next_index
+            self.items.append(item)
+        <FONT COLOR=#3333CC><B>elif</B></FONT> item.our_business():
+            item.index = self.next_index
+            self.items.append(item)
+            self.business.append(item)
+            <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+                <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sadd  %2d  %s"</FONT>%(item.indent_str,
+                                            self.next_index,item)
+            self.next_index = self.next_index + 1
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#1111CC># It's not something we can assign a sensible index to, so don't</FONT>
+            <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+                <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sadd  xx  %s"</FONT>%(item.indent_str,item)
+            self.items.append(item)
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" translate_label"><FONT COLOR=#CC0000><B> translate_label</B></FONT>(self,label,line):
+        <FONT COLOR=#115511>"""Given a label, return its translation.
+
+        label -- either a string of the form "&lt;...&gt;" to look up in
+                 this block's label dictionary, or one of the special
+                 targets (e.g., next, MatchOk, etc.)
+        line  -- the line using this label
+
+        Reports an error and just returns the original "label" if it
+        can't translate it.
+        """</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.label_dict.has_key(label):
+            <FONT COLOR=#1111CC># How far do we have to jump?</FONT>
+            offset = self.label_dict[label] - line.index
+            <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"%+d"</FONT>%offset
+        <FONT COLOR=#3333CC><B>elif</B></FONT> label == <FONT COLOR=#115511>"MatchOk"</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"MatchOk"</FONT>
+        <FONT COLOR=#3333CC><B>elif</B></FONT> label == <FONT COLOR=#115511>"MatchOK"</FONT>:
+            line.warning(<FONT COLOR=#115511>"Label 'MatchOK' should be spelt 'MatchOk'"</FONT>
+                         <FONT COLOR=#115511>" (using 'MatchOk')"</FONT>)
+            <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"MatchOk"</FONT>
+        <FONT COLOR=#3333CC><B>elif</B></FONT> label == <FONT COLOR=#115511>"MatchFail"</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"MatchFail"</FONT>
+        <FONT COLOR=#3333CC><B>elif</B></FONT> label == <FONT COLOR=#115511>"next"</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"+1"</FONT>
+        <FONT COLOR=#3333CC><B>elif</B></FONT> label == <FONT COLOR=#115511>"previous"</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"-1"</FONT>
+        <FONT COLOR=#3333CC><B>elif</B></FONT> label == <FONT COLOR=#115511>"repeat"</FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> <FONT COLOR=#115511>"0"</FONT>
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            line.error(<FONT COLOR=#115511>"Undefined label '%s'"</FONT>%label)
+            <FONT COLOR=#3333CC><B>return</B></FONT> label
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" expand"><FONT COLOR=#CC0000><B> expand</B></FONT>(self,stream,block=None):
+        <FONT COLOR=#115511>"""Write out the expanded equivalent of ourselves.
+
+        stream  -- an object with a "write" method, e.g., a file
+        block   -- if we're in a block, this is it, otherwise None
+        """</FONT>
+
+        self.startline.expand(stream,block=block)
+        <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> self.items[:-1]:
+            item.expand(stream,block=self)
+
+        self.items[-1].expand(stream,block=self)
+
+        <FONT COLOR=#1111CC># Deal with closing any block parentheses</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.startline.class_name == <FONT COLOR=#115511>"TableBlockLine"</FONT> <FONT COLOR=#3333CC><B>or</B></FONT> \
+           self.startline.class_name == <FONT COLOR=#115511>"BadTableBlockLine"</FONT>:
+            <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+                stream.write(<FONT COLOR=#115511>"Line ...: "</FONT>)
+
+            stream.write(self.indent_str)
+            <FONT COLOR=#3333CC><B>if</B></FONT> self.outer:
+                <FONT COLOR=#1111CC># Outer block - just close it</FONT>
+                stream.write(<FONT COLOR=#115511>")"</FONT>)
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                <FONT COLOR=#1111CC># Inner block is a Table block, and we need to close both</FONT>
+                <FONT COLOR=#1111CC># the tuple-of-tuples, and also the tuple containing the</FONT>
+                <FONT COLOR=#1111CC># Table command...</FONT>
+                stream.write(<FONT COLOR=#115511>"))"</FONT>)
+            <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> self.is_last:
+                stream.write(<FONT COLOR=#115511>","</FONT>)
+            stream.write(<FONT COLOR=#115511>"\n"</FONT>)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>class</B></FONT><A NAME=" File"><FONT COLOR=#CC0000><B> File</B></FONT>:
+    <FONT COLOR=#115511>"""This is the class that holds our processed data
+
+    Contains:
+        lines   -- a list of the line instances for each "line" in our text
+        items   -- a list of lines and BLOCKs
+    """</FONT>
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" __init__"><FONT COLOR=#CC0000><B> __init__</B></FONT>(self,tagtuples,text):
+        <FONT COLOR=#115511>"""Instantiate a File
+
+        tagtuples -- the list of mxTextTools tag tuples generated by
+                     parsing the data in "text"
+        text      -- the text we parsed
+        """</FONT>
+
+        self.text      = text
+        self.tagtuples = tagtuples
+
+        <FONT COLOR=#1111CC># Assemble our list of lines</FONT>
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Pass 1: assembling lines"</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"~~~~~~~~~~~~~~~~~~~~~~~~"</FONT>
+        self.lines = []
+        lineno     = 0
+        prevline   = None
+        <FONT COLOR=#3333CC><B>for</B></FONT> tagtuple <FONT COLOR=#3333CC><B>in</B></FONT> tagtuples:
+            lineno = lineno + 1
+            thisline = LineFactory(lineno,tagtuple,text)
+
+            <FONT COLOR=#3333CC><B>if</B></FONT> prevline:
+                prevline.next_indent = thisline.indent
+
+            self.lines.append(thisline)
+            prevline = thisline
+
+        <FONT COLOR=#1111CC>#if </FONT>DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT>
+
+        <FONT COLOR=#1111CC># The indentation of an empty line is taken to be the same</FONT>
+        <FONT COLOR=#1111CC># as the indentation of the first following non-empty line</FONT>
+        <FONT COLOR=#1111CC># The easiest way to do that is to work backwards through</FONT>
+        <FONT COLOR=#1111CC># the list (is it better to take a copy and reverse THAT,</FONT>
+        <FONT COLOR=#1111CC># or to reverse our original list twice?)</FONT>
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Pass 2: sorting out indentation of empty lines"</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"</FONT>
+        revlist = self.lines[:]
+        revlist.reverse()
+        indent = 0
+        <FONT COLOR=#3333CC><B>for</B></FONT> line <FONT COLOR=#3333CC><B>in</B></FONT> revlist:
+            <FONT COLOR=#3333CC><B>if</B></FONT> line.class_name == <FONT COLOR=#115511>"EmptyLine"</FONT>:
+                line.change_indent(indent)
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                indent = line.indent
+        <FONT COLOR=#3333CC><B>del</B></FONT> revlist
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Pass 2.5 - the contents of those lines..."</FONT>
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"</FONT>
+            <FONT COLOR=#3333CC><B>for</B></FONT> line <FONT COLOR=#3333CC><B>in</B></FONT> self.lines:
+                <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Line %d %s"</FONT>%(line.lineno,line.class_name)
+                <FONT COLOR=#1111CC>#print_tuples([line.tagtuple],self.text,"  ")</FONT>
+            <FONT COLOR=#3333CC><B>print</B></FONT>
+
+        <FONT COLOR=#1111CC># Now we need to assemble blocks</FONT>
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Pass 3: assembling blocks"</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"~~~~~~~~~~~~~~~~~~~~~~~~~"</FONT>
+        self.reset()
+        self.items = []
+
+        <FONT COLOR=#3333CC><B>while</B></FONT> 1:
+            <FONT COLOR=#3333CC><B>try</B></FONT>:
+                item = self.next()
+            <FONT COLOR=#3333CC><B>except</B></FONT> EOFError:
+                <FONT COLOR=#3333CC><B>break</B></FONT>
+
+            <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING:
+                <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sTOP    %s"</FONT>%(item.indent_str,item)
+            <FONT COLOR=#3333CC><B>if</B></FONT> item.starts_block():
+                block = Block(startline=item,outer=1,file=self)
+                self.items.append(block)
+                block.is_last = 1   <FONT COLOR=#1111CC># Everything at outer level is "last"</FONT>
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                <FONT COLOR=#3333CC><B>if</B></FONT> item.only_in_block():
+                    item.error(<FONT COLOR=#115511>"This line is not allowed outside a block "</FONT>
+                               <FONT COLOR=#115511>"- continuing anyway"</FONT>)
+                self.items.append(item)
+                <FONT COLOR=#3333CC><B>if</B></FONT> item.our_business():
+                    item.is_last = 1    <FONT COLOR=#1111CC># Everything at outer level is "last"</FONT>
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT>
+                
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" reset"><FONT COLOR=#CC0000><B> reset</B></FONT>(self):
+        <FONT COLOR=#115511>"""Ensure that the next call of "nextline" returns the first line."""</FONT>
+        self.index = -1
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" unget"><FONT COLOR=#CC0000><B> unget</B></FONT>(self):
+        <FONT COLOR=#115511>"""Unread the current line."""</FONT>
+        self.index = self.index - 1
+        <FONT COLOR=#3333CC><B>if</B></FONT> self.index &lt; 0:
+            self.index = 0
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" next"><FONT COLOR=#CC0000><B> next</B></FONT>(self):
+        <FONT COLOR=#115511>"""Retrieve the next line from the list of lines in this "file".
+
+        Raises EOFError if there is no next line (i.e., "end of file")
+        """</FONT>
+        self.index = self.index + 1
+        <FONT COLOR=#3333CC><B>try</B></FONT>:
+            <FONT COLOR=#3333CC><B>return</B></FONT> self.lines[self.index]
+        <FONT COLOR=#3333CC><B>except</B></FONT> IndexError:
+            <FONT COLOR=#1111CC># leave the index off the end, so we get EOF again if</FONT>
+            <FONT COLOR=#1111CC># we're called again - but there's no point courting overflow...</FONT>
+            self.index = self.index -1
+            <FONT COLOR=#3333CC><B>raise</B></FONT> EOFError
+
+    <FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" expand"><FONT COLOR=#CC0000><B> expand</B></FONT>(self,stream):
+        <FONT COLOR=#115511>"""Expand out the result."""</FONT>
+        <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> self.items:
+            item.expand(stream)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" print_tuples"><FONT COLOR=#CC0000><B> print_tuples</B></FONT>(tuples,text,indent=<FONT COLOR=#115511>""</FONT>):
+    <FONT COLOR=#115511>"""Print out a list of tuples in a neat form
+
+    tuples -- our tuple list
+    text   -- the text it tags
+    indent -- our current indentation
+    """</FONT>
+
+    <FONT COLOR=#1111CC># Tuples are of the form:</FONT>
+    <FONT COLOR=#1111CC># (object,left_index,right_index,sublist)</FONT>
+
+    <FONT COLOR=#3333CC><B>for</B></FONT> obj,left,right,sub <FONT COLOR=#3333CC><B>in</B></FONT> tuples:
+        <FONT COLOR=#3333CC><B>if</B></FONT> sub:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%s%s"</FONT>%(indent,obj)
+            print_tuples(sub,text,indent+<FONT COLOR=#115511>"  "</FONT>)
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#1111CC># Terminal node - show the actual text we've tagged!</FONT>
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%s%s = %s"</FONT>%(indent,obj,`text[left:right]`)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" print_text"><FONT COLOR=#CC0000><B> print_text</B></FONT>(text):
+    <FONT COLOR=#115511>"""Print out text with line numbers."""</FONT>
+    lines = string.split(text,<FONT COLOR=#115511>"\n"</FONT>)
+    lineno = 0
+
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Original text"</FONT>
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"============="</FONT>
+    <FONT COLOR=#3333CC><B>for</B></FONT> line <FONT COLOR=#3333CC><B>in</B></FONT> lines:
+        lineno = lineno + 1
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%3d: %s"</FONT>%(lineno,`line`)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" print_usage"><FONT COLOR=#CC0000><B> print_usage</B></FONT>(argv0):
+    <FONT COLOR=#1111CC>#script_name = string.split(argv0, os.sep)[-1]</FONT>
+    <FONT COLOR=#1111CC>#print </FONT>__doc__%(script_name)
+    <FONT COLOR=#3333CC><B>print</B></FONT> argv0
+    <FONT COLOR=#3333CC><B>print</B></FONT> __doc__
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" show_tup"><FONT COLOR=#CC0000><B> show_tup</B></FONT>(indent,nn,tup):
+    ll = []
+    <FONT COLOR=#3333CC><B>for</B></FONT> item <FONT COLOR=#3333CC><B>in</B></FONT> tup:
+        <FONT COLOR=#3333CC><B>if</B></FONT> type(item) == type((1,)) <FONT COLOR=#3333CC><B>or</B></FONT> type(item) == type([]):
+            ll.append(<FONT COLOR=#115511>"(..)"</FONT>)
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            ll.append(`item`)
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> nn:
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%s%d: (%s)"</FONT>%(indent,nn,string.join(ll,<FONT COLOR=#115511>","</FONT>))
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%s(%s)"</FONT>%(indent,string.join(ll,<FONT COLOR=#115511>","</FONT>))
+
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" comp_sub"><FONT COLOR=#CC0000><B> comp_sub</B></FONT>(indent,one,two):
+    len1 = len(one)
+    <FONT COLOR=#3333CC><B>if</B></FONT> len(two) != len(one):
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sTuple lengths differ - 1:%d, 2:%d"</FONT>%(indent,len1,len(two))
+        show_tup(indent,1,one)
+        show_tup(indent,2,two)
+        <FONT COLOR=#1111CC># If this is all, let's try to continue...</FONT>
+        len1 = min(len1,len(two))
+
+    <FONT COLOR=#3333CC><B>for</B></FONT> count <FONT COLOR=#3333CC><B>in</B></FONT> range(len1):
+        a = one[count]
+        b = two[count]
+        <FONT COLOR=#3333CC><B>if</B></FONT> type(a) != type(b):
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sValue types differ, item %d: 1:%s, 2:%s"</FONT>%(indent,count,
+                                                               type(a),type(b))
+            show_tupe(indent,1,one)
+            show_tupe(indent2,two)
+            <FONT COLOR=#3333CC><B>return</B></FONT> 0
+        <FONT COLOR=#3333CC><B>if</B></FONT> type(a) == type((1,)) <FONT COLOR=#3333CC><B>or</B></FONT> type(a) == type([]):
+            <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> comp_sub(indent+<FONT COLOR=#115511>"  "</FONT>,a,b):
+                <FONT COLOR=#1111CC># They're the same at this level, so show only one...</FONT>
+                show_tup(indent,0,one)
+                <FONT COLOR=#3333CC><B>return</B></FONT> 0
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#3333CC><B>if</B></FONT> a != b:
+                <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"%sValues differ, item %d: 1:%s, 2:%s"</FONT>%(indent,count,
+                                                              `a`,`b`)
+                show_tup(indent,1,one)
+                show_tup(indent,2,two)
+                <FONT COLOR=#3333CC><B>return</B></FONT> 0
+    <FONT COLOR=#3333CC><B>return</B></FONT> 1
+
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" compare_tagtables"><FONT COLOR=#CC0000><B> compare_tagtables</B></FONT>(one,two):
+    <FONT COLOR=#1111CC># Each table is made up of tuples of the form</FONT>
+    <FONT COLOR=#1111CC># (tagobj,action,arg,onfalse,ontrue)</FONT>
+    <FONT COLOR=#1111CC># but if action is Table or SubTable then arg may be a tuple</FONT>
+    <FONT COLOR=#1111CC># itself...</FONT>
+    <FONT COLOR=#3333CC><B>if</B></FONT> comp_sub(<FONT COLOR=#115511>""</FONT>,one,two):
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"They appear to be the same"</FONT>
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>def</B></FONT><A NAME=" main"><FONT COLOR=#CC0000><B> main</B></FONT>():
+    <FONT COLOR=#115511>"""Used to test the module."""</FONT>
+
+    debug_pytag  = DEFAULT_DEBUG
+    use_pytag    = DEFAULT_PYTAG
+    use_stdout   = 0
+    import_tags  = 0
+    force_overwrite = 0
+    compare_tables  = 0
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> os.name == <FONT COLOR=#115511>"posix"</FONT>:
+        use_testdata = 0
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        <FONT COLOR=#1111CC># At home...</FONT>
+        use_testdata = 1
+        use_stdout   = 1
+        <FONT COLOR=#3333CC><B>global</B></FONT> DEBUGGING
+        DEBUGGING    = 0
+
+    <FONT COLOR=#1111CC># Do we have command line arguments?</FONT>
+    arg_list = sys.argv[1:]
+    args = []
+
+    <FONT COLOR=#3333CC><B>while</B></FONT> 1:
+        <FONT COLOR=#3333CC><B>if</B></FONT> len(arg_list) == 0:
+            <FONT COLOR=#3333CC><B>break</B></FONT>
+
+        word = arg_list[0]
+
+        <FONT COLOR=#3333CC><B>if</B></FONT> word == <FONT COLOR=#115511>"-pytag"</FONT>:
+            use_pytag = 1
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-debug"</FONT>:
+            debug_pytag = 1
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-stdout"</FONT>:
+            use_stdout = 1
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-force"</FONT>:
+            force_overwrite = 1
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-import"</FONT>:
+            import_tags = 1
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-compare"</FONT>:
+            compare_tables = 1
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-diag"</FONT>:
+            <FONT COLOR=#3333CC><B>global</B></FONT> DEBUGGING
+            DEBUGGING = 1
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-test"</FONT>:
+            use_testdata = 1
+            use_stdout = 1
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-help"</FONT>:
+            print_usage(sys.argv[0])
+            <FONT COLOR=#3333CC><B>return</B></FONT>
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-version"</FONT>:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Version:"</FONT>,__version__
+            <FONT COLOR=#3333CC><B>return</B></FONT>
+        <FONT COLOR=#3333CC><B>elif</B></FONT> word == <FONT COLOR=#115511>"-history"</FONT>:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"History:"</FONT>
+            <FONT COLOR=#3333CC><B>print</B></FONT> __history__
+            <FONT COLOR=#3333CC><B>return</B></FONT>
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            args.append(word)
+
+        arg_list = arg_list[1:]
+        <FONT COLOR=#3333CC><B>continue</B></FONT>
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> compare_tables:
+        <FONT COLOR=#3333CC><B>from</B></FONT> Translate_tags <FONT COLOR=#3333CC><B>import</B></FONT> t_file
+        i_file = define_tagtable()
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Comparing internal table (1) against external (2)"</FONT>
+        compare_tagtables(i_file,t_file)
+        <FONT COLOR=#3333CC><B>return</B></FONT>
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> use_testdata <FONT COLOR=#3333CC><B>and</B></FONT> (<FONT COLOR=#3333CC><B>not</B></FONT> args <FONT COLOR=#3333CC><B>or</B></FONT> len(args) &gt; 2):
+        print_usage(sys.argv[0])
+        <FONT COLOR=#3333CC><B>return</B></FONT>
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> <FONT COLOR=#3333CC><B>not</B></FONT> use_testdata:
+        infile = args[0]
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> import_tags:
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Importing tag table definition"</FONT>
+        <FONT COLOR=#3333CC><B>from</B></FONT> Translate_tags <FONT COLOR=#3333CC><B>import</B></FONT> t_file
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Using internal tag table definition"</FONT>
+        t_file = define_tagtable()
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> use_stdout:
+        outfile = <FONT COLOR=#115511>"standard output"</FONT>
+    <FONT COLOR=#3333CC><B>elif</B></FONT> len(args) &gt; 1:
+        outfile = args[1]
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        base,ext = os.path.splitext(infile)
+        <FONT COLOR=#3333CC><B>if</B></FONT> ext != <FONT COLOR=#115511>".py"</FONT>:
+            outfile = base + <FONT COLOR=#115511>".py"</FONT>
+        <FONT COLOR=#3333CC><B>else</B></FONT>:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Input file has extension .py so won't guess"</FONT>\
+                  <FONT COLOR=#115511>" an output file"</FONT>
+            <FONT COLOR=#3333CC><B>return</B></FONT>
+
+    <FONT COLOR=#3333CC><B>if</B></FONT> outfile != <FONT COLOR=#115511>"standard output"</FONT>:
+        <FONT COLOR=#3333CC><B>if</B></FONT> outfile == infile:
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"The output file is the same as the input file"</FONT>
+            <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Refusing to overwrite %s"</FONT>%outfile
+            <FONT COLOR=#3333CC><B>return</B></FONT>
+        <FONT COLOR=#3333CC><B>elif</B></FONT> os.path.exists(outfile):
+            <FONT COLOR=#3333CC><B>if</B></FONT> force_overwrite:
+                <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Output file %s already exists"</FONT>\
+                      <FONT COLOR=#115511>" - overwriting it"</FONT>%outfile
+            <FONT COLOR=#3333CC><B>else</B></FONT>:
+                <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Output file %s already exists"</FONT>%outfile
+                <FONT COLOR=#3333CC><B>return</B></FONT>
+
+    <FONT COLOR=#1111CC># Read the input file</FONT>
+    <FONT COLOR=#3333CC><B>if</B></FONT> use_testdata:
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT>
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Using test data"</FONT>
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"==============="</FONT>
+        text = test_data
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT>
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Reading text from %s"</FONT>%infile
+        <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"=================="</FONT>+<FONT COLOR=#115511>"="</FONT>*len(infile)
+        file = open(infile,<FONT COLOR=#115511>"r"</FONT>)
+        text = file.read()
+        file.close()
+
+    <FONT COLOR=#1111CC># Show what we are trying to parse</FONT>
+    <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING <FONT COLOR=#3333CC><B>or</B></FONT> use_testdata:
+        <FONT COLOR=#3333CC><B>print</B></FONT>
+        print_text(text)
+
+    <FONT COLOR=#1111CC># Tag it</FONT>
+    <FONT COLOR=#3333CC><B>print</B></FONT>
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Tagging text"</FONT>
+    <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"============"</FONT>
+    <FONT COLOR=#3333CC><B>if</B></FONT> use_pytag:
+        <FONT COLOR=#3333CC><B>import</B></FONT> pytag
+        pytag.set_verbosity(0)
+        <FONT COLOR=#3333CC><B>if</B></FONT> debug_pytag:
+            pytag.set_verbosity(1)
+            pytag.use_debugger()
+        result,taglist,next = pytag.pytag(text,t_file)
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        timer = TextTools._timer()
+        timer.start()
+        result, taglist, next = tag(text,t_file)
+        <FONT COLOR=#1111CC>#result, taglist, next = tag(text,t_file,0,len(text),taglist)</FONT>
+        <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Tagging took"</FONT>,timer.stop()[0],<FONT COLOR=#115511>"seconds"</FONT>
+
+    <FONT COLOR=#1111CC># Now print out the result of the tagging</FONT>
+    <FONT COLOR=#3333CC><B>print</B></FONT>
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Manipulating tagged data"</FONT>
+    <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"========================"</FONT>
+    tagfile = File(taglist,text)
+
+    <FONT COLOR=#3333CC><B>print</B></FONT>
+    <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"Writing translation to %s"</FONT>%outfile
+    <FONT COLOR=#3333CC><B>if</B></FONT> DEBUGGING: <FONT COLOR=#3333CC><B>print</B></FONT> <FONT COLOR=#115511>"======================="</FONT>+<FONT COLOR=#115511>"="</FONT>*len(outfile)
+
+    <FONT COLOR=#1111CC># Open the output file, if necessary</FONT>
+    <FONT COLOR=#3333CC><B>if</B></FONT> use_stdout:
+        file = sys.stdout
+    <FONT COLOR=#3333CC><B>else</B></FONT>:
+        file = open(outfile,<FONT COLOR=#115511>"w"</FONT>)
+
+    tagfile.expand(file)
+
+
+<FONT COLOR=#1111CC># ------------------------------------------------------------</FONT>
+<FONT COLOR=#3333CC><B>if</B></FONT> __name__ == <FONT COLOR=#115511>'__main__'</FONT>:
+    main()
+</PRE>
+		  <!--footer-->
+		  </BODY>

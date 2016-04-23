@@ -1,0 +1,550 @@
+<HTML>
+<HEAD><TITLE>Examples.py</TITLE></HEAD>
+		  <BODY BGCOLOR=#FFFFFF>
+		  <!--header-->
+		  <!--script--><PRE><FONT COLOR=#1111CC># -*- Mode: Python -*-</FONT>
+<FONT COLOR=#115511>"""Examples.tag -- Tag metalanguage examples
+
+ Original examples from Marc-Andre Lemburg, translated into the metalanguage
+ by Tony J Ibbs, at various dates up to and including 1999-10-12
+
+ Note that these are *examples*, and not all can actually be parsed by the
+ current translator...
+
+ My comments start "#TJI"
+
+ All original examples are:
+    (c) Copyright Marc-Andre Lemburg; All Rights Reserved.
+    See the documentation for further information on copyrights,
+    or contact the author (mal@lemburg.com).
+"""</FONT>
+
+
+<FONT COLOR=#115511>""" RTF - tag a RTF string (Version 0.2) [alternative version]
+
+    This version does recursion using the ThisTable special argument
+    to the Table cmd.
+"""</FONT>
+
+numeral = (
+    <FONT COLOR=#1111CC># sign ?</FONT>
+    (None,Is,<FONT COLOR=#115511>'-'</FONT>,+1),
+    (None,AllIn,number),
+)
+
+<FONT COLOR=#1111CC># XXX: doesn't know how to handle \bin et al. with embedded {}</FONT>
+
+ctrlword = (
+    (<FONT COLOR=#115511>'name'</FONT>,AllIn,a2z),                 <FONT COLOR=#1111CC># name</FONT>
+    (None,Is,<FONT COLOR=#115511>' '</FONT>,+1,MatchOk),           <FONT COLOR=#1111CC># delimiter</FONT>
+    (None,IsIn,number+<FONT COLOR=#115511>'-'</FONT>,MatchOk),
+    (None,Skip,-1),                     <FONT COLOR=#1111CC># unread the previous character</FONT>
+    (<FONT COLOR=#115511>'param'</FONT>,Table,numeral,0,MatchOk),
+    (None,Is,<FONT COLOR=#115511>' '</FONT>,+1,MatchOk),
+    (None,Skip,-1),                     <FONT COLOR=#1111CC># unread the previous character</FONT>
+)
+
+hex = set(number+<FONT COLOR=#115511>'abcdefABCDEF'</FONT>)
+notalpha = set(alpha,0)
+
+<FONT COLOR=#1111CC>#TJI ------------------------------------------------------------</FONT>
+<FONT COLOR=#1111CC>#TJI The original text for ctrlsymbol is:</FONT>
+<FONT COLOR=#1111CC>#TJI</FONT>
+<FONT COLOR=#1111CC>#TJI       ctrlsymbol = (</FONT>
+<FONT COLOR=#1111CC>#TJI                     (None,Is,"'",+3),         # hexquote</FONT>
+<FONT COLOR=#1111CC>#TJI                      (None,IsInSet,hex),</FONT>
+<FONT COLOR=#1111CC>#TJI                      (None,IsInSet,hex),</FONT>
+<FONT COLOR=#1111CC>#TJI                     (None,IsInSet,notalpha,+1,MatchOk) # other</FONT>
+<FONT COLOR=#1111CC>#TJI                    )</FONT>
+<FONT COLOR=#1111CC>#TJI</FONT>
+<FONT COLOR=#1111CC>#TJI A first transformation of the orginal text gives us:</FONT>
+<FONT COLOR=#1111CC>#TJI</FONT>
+<FONT COLOR=#1111CC>#TJI       ctrlsymbol = Table is:</FONT>
+<FONT COLOR=#1111CC>#TJI           Is "'" F:&lt;4&gt;                # hexquote</FONT>
+<FONT COLOR=#1111CC>#TJI           IsInSet hex</FONT>
+<FONT COLOR=#1111CC>#TJI           IsInSet hex</FONT>
+<FONT COLOR=#1111CC>#TJI           &lt;4&gt;</FONT>
+<FONT COLOR=#1111CC>#TJI           IsInSet notalpha F:next T:MatchOk   # other</FONT>
+<FONT COLOR=#1111CC>#TJI</FONT>
+<FONT COLOR=#1111CC>#TJI which quickly further transforms to become:</FONT>
+
+ctrlsymbol = (
+    (None,Is,<FONT COLOR=#115511>"'"</FONT>,+3,+1),     <FONT COLOR=#1111CC># hexquote</FONT>
+        (None,IsInSet,hex),
+        (None,IsInSet,hex),
+    (None,IsInSet,notalpha,+1,MatchOk), <FONT COLOR=#1111CC># other</FONT>
+)
+
+<FONT COLOR=#1111CC>#TJI which I think is a lot clearer, except that the last line could</FONT>
+<FONT COLOR=#1111CC>#TJI presumably be better written as:</FONT>
+<FONT COLOR=#1111CC>#TJI    IsInSet notalpha F:MatchOK T:MatchOk       # other</FONT>
+<FONT COLOR=#1111CC>#TJI ------------------------------------------------------------</FONT>
+
+rtf = (
+    <FONT COLOR=#1111CC># &lt;top&gt;                             # this is a label at the top of the definition</FONT>
+    (None,Is,<FONT COLOR=#115511>'\\'</FONT>,+3,+1),    <FONT COLOR=#1111CC># control ?</FONT>
+        (<FONT COLOR=#115511>'word'</FONT>,Table,ctrlword,+1,-1),  <FONT COLOR=#1111CC># word</FONT>
+        (<FONT COLOR=#115511>'symbol'</FONT>,Table,ctrlsymbol,+1,-2), <FONT COLOR=#1111CC># symbol</FONT>
+    (None,Is,<FONT COLOR=#115511>'}'</FONT>,+2,+1),     <FONT COLOR=#1111CC># closing group</FONT>
+        (None,Skip,-1,0,MatchOk),       <FONT COLOR=#1111CC># nested group</FONT>
+    (None,Is,<FONT COLOR=#115511>'{'</FONT>,+4,+1),     <FONT COLOR=#1111CC># recurse</FONT>
+        (<FONT COLOR=#115511>'group'</FONT>,Table,ThisTable),      <FONT COLOR=#1111CC># using ourselves</FONT>
+        (None,Is,<FONT COLOR=#115511>'}'</FONT>),
+        (None,Jump,To,-8),
+    (<FONT COLOR=#115511>'text'</FONT>,AllNotIn,<FONT COLOR=#115511>'\\{}'</FONT>,+1,-9),     <FONT COLOR=#1111CC># document text</FONT>
+    (<FONT COLOR=#115511>'eof'</FONT>,EOF,Here),                   <FONT COLOR=#1111CC># EOF or fail</FONT>
+)
+
+
+<FONT COLOR=#115511>""" HTML - tag a HTML string (Version 0.6)"""</FONT>
+
+
+<FONT COLOR=#1111CC># ErrorTag</FONT>
+error = <FONT COLOR=#115511>'***syntax error'</FONT>                       <FONT COLOR=#1111CC># error tag obj</FONT>
+
+tagname_set = set(alpha+<FONT COLOR=#115511>'-'</FONT>+number)
+tagattrname_set = set(alpha+<FONT COLOR=#115511>'-'</FONT>+number)
+tagvalue_set = set(<FONT COLOR=#115511>'"\'&gt; '</FONT>,0)
+white_set = set(<FONT COLOR=#115511>' \r\n\t'</FONT>)
+
+tagattr = (
+    (<FONT COLOR=#115511>'name'</FONT>,AllInSet,tagattrname_set),  <FONT COLOR=#1111CC># name</FONT>
+    (None,AllInSet,white_set,+1),       <FONT COLOR=#1111CC># skip junk</FONT>
+    (None,Is,<FONT COLOR=#115511>'='</FONT>,MatchOk),              <FONT COLOR=#1111CC># with value ?</FONT>
+    (None,AllInSet,white_set,+1),       <FONT COLOR=#1111CC># skip junk</FONT>
+    (<FONT COLOR=#115511>'value'</FONT>,AllInSet,tagvalue_set,+1,MatchOk), <FONT COLOR=#1111CC># unquoted value</FONT>
+    (None,Is,<FONT COLOR=#115511>'"'</FONT>,+4,+1),     <FONT COLOR=#1111CC># double quoted value</FONT>
+        (<FONT COLOR=#115511>'value'</FONT>,AllNotIn,<FONT COLOR=#115511>'"'</FONT>),
+        (None,Is,<FONT COLOR=#115511>'"'</FONT>),
+        (None,Jump,To,MatchOk),
+    (None,Is,<FONT COLOR=#115511>"'"</FONT>,+3,+1),     <FONT COLOR=#1111CC># single quoted value</FONT>
+        (<FONT COLOR=#115511>'value'</FONT>,AllNotIn,<FONT COLOR=#115511>"'"</FONT>),
+        (None,Is,<FONT COLOR=#115511>"'"</FONT>),
+)
+
+valuetable = (
+    <FONT COLOR=#1111CC># ignore whitespace + '='</FONT>
+    <FONT COLOR=#1111CC>#[ignored]#AllInSet set(' \r\n\t=') F:next</FONT>
+    <FONT COLOR=#1111CC># unquoted value</FONT>
+    (<FONT COLOR=#115511>'value'</FONT>,AllInSet,tagvalue_set,+1,MatchOk),
+    <FONT COLOR=#1111CC># double quoted value</FONT>
+    (None,Is,<FONT COLOR=#115511>'"'</FONT>,+4,+1),
+        (<FONT COLOR=#115511>'value'</FONT>,AllNotIn,<FONT COLOR=#115511>'"'</FONT>),
+        (None,Is,<FONT COLOR=#115511>'"'</FONT>),
+        (None,Jump,To,MatchOk),
+    <FONT COLOR=#1111CC># single quoted value</FONT>
+    (None,Is,<FONT COLOR=#115511>"'"</FONT>,+3,+1),
+        (<FONT COLOR=#115511>'value'</FONT>,AllNotIn,<FONT COLOR=#115511>"'"</FONT>),
+        (None,Is,<FONT COLOR=#115511>"'"</FONT>),
+)
+
+allattrs = (
+    <FONT COLOR=#1111CC># &lt;top&gt;</FONT>
+    <FONT COLOR=#1111CC># look for attributes</FONT>
+    (None,AllInSet,white_set,+4,+1),
+        (None,Is,<FONT COLOR=#115511>'&gt;'</FONT>,+1,MatchOk),
+        (<FONT COLOR=#115511>'tagattr'</FONT>,Table,tagattr),
+        (None,Jump,To,-3),
+    (None,Is,<FONT COLOR=#115511>'&gt;'</FONT>,+1,MatchOk),
+    <FONT COLOR=#1111CC># handle incorrect attributes</FONT>
+    (error,AllNotIn,<FONT COLOR=#115511>'&gt; \r\n\t'</FONT>),
+    (None,Jump,To,-6),
+)
+
+htmltag = (
+    (None,Is,<FONT COLOR=#115511>'&lt;'</FONT>,+21,+1),
+        <FONT COLOR=#1111CC># is this a closing tag ?</FONT>
+        (<FONT COLOR=#115511>'closetag'</FONT>,Is,<FONT COLOR=#115511>'/'</FONT>,+1),
+        <FONT COLOR=#1111CC># a comment ?</FONT>
+        (<FONT COLOR=#115511>'comment'</FONT>,Is,<FONT COLOR=#115511>'!'</FONT>,+4,+1),
+            (None,Word,<FONT COLOR=#115511>'--'</FONT>),
+            <FONT COLOR=#1111CC>#[ignored]#'text' = sWordStart BMS('--&gt;') F:next</FONT>
+            (None,Skip,3),
+            (None,Jump,To,MatchOk),
+        <FONT COLOR=#1111CC># a SGML-Tag ?</FONT>
+        (<FONT COLOR=#115511>'other'</FONT>,AllNotIn,<FONT COLOR=#115511>'&gt;'</FONT>,+1),
+        (None,Is,<FONT COLOR=#115511>'&gt;'</FONT>),
+        (None,Jump,To,MatchOk),
+        <FONT COLOR=#1111CC># XMP-Tag ?</FONT>
+        (<FONT COLOR=#115511>'tagname'</FONT>,Word,<FONT COLOR=#115511>'XMP'</FONT>,+4,+1),
+            (None,Is,<FONT COLOR=#115511>'&gt;'</FONT>),
+            (<FONT COLOR=#115511>'text'</FONT>,WordStart,<FONT COLOR=#115511>'&lt;/XMP&gt;'</FONT>),
+            <FONT COLOR=#1111CC>#[ignored]#Skip len('&lt;/XMP&gt;')</FONT>
+            (None,Jump,To,MatchOk),
+        <FONT COLOR=#1111CC># get the tag name</FONT>
+        (<FONT COLOR=#115511>'tagname'</FONT>,AllInSet,tagname_set),
+        <FONT COLOR=#1111CC># look for attributes</FONT>
+        <FONT COLOR=#1111CC># &lt;huntAttributes&gt;</FONT>
+        (None,AllInSet,white_set,+4,+1),
+            (None,Is,<FONT COLOR=#115511>'&gt;'</FONT>,+1,MatchOk),
+            (<FONT COLOR=#115511>'tagattr'</FONT>,Table,tagattr),
+            (None,Jump,To,-3),
+        (None,Is,<FONT COLOR=#115511>'&gt;'</FONT>,+1,MatchOk),
+        <FONT COLOR=#1111CC># handle incorrect attributes</FONT>
+        (error,AllNotIn,<FONT COLOR=#115511>'&gt; \n\r\t'</FONT>),
+        (None,Jump,To,-6),
+)
+
+htmltable = (
+    <FONT COLOR=#1111CC># &lt;top&gt;</FONT>
+    <FONT COLOR=#1111CC># HTML-Tag</FONT>
+    (<FONT COLOR=#115511>'htmltag'</FONT>,Table,htmltag,+1,+4),
+    <FONT COLOR=#1111CC># not HTML, but still using this syntax: error or inside XMP-tag !</FONT>
+    (error,Is,<FONT COLOR=#115511>'&lt;'</FONT>,+3,+1),
+        (error,AllNotIn,<FONT COLOR=#115511>'&gt;'</FONT>,+1),
+        (error,Is,<FONT COLOR=#115511>'&gt;'</FONT>),
+    <FONT COLOR=#1111CC># &lt;text&gt;                            # normal text</FONT>
+    (<FONT COLOR=#115511>'text'</FONT>,AllNotIn,<FONT COLOR=#115511>'&lt;'</FONT>,+1),
+    <FONT COLOR=#1111CC># end of file</FONT>
+    (<FONT COLOR=#115511>'eof'</FONT>,EOF,Here,-5),
+)
+
+
+<FONT COLOR=#115511>""" Loop - loop examples (Version 0.1)"""</FONT>
+
+<FONT COLOR=#1111CC>#TJI ------------------------------------------------------------</FONT>
+<FONT COLOR=#1111CC>#TJI Looping must be susceptible to a better representation, but since I don't</FONT>
+<FONT COLOR=#1111CC>#TJI have any documentation for it, I'll leave it alone for now...</FONT>
+<FONT COLOR=#1111CC>#TJI ------------------------------------------------------------</FONT>
+
+<FONT COLOR=#1111CC># use Loop to match a certain number of subtags</FONT>
+table1 = (
+    (None,Word,<FONT COLOR=#115511>'loop '</FONT>),
+    <FONT COLOR=#1111CC># match &lt;= 5 stars</FONT>
+    <FONT COLOR=#1111CC># &lt;loop&gt;</FONT>
+    (<FONT COLOR=#115511>'loop'</FONT>,Loop,5,+4,+1),
+        (None,Is,<FONT COLOR=#115511>'*'</FONT>,+1,-1),
+        (None,LoopControl,Break),
+        (None,Jump,To,-3),
+    <FONT COLOR=#1111CC># must end with a dot</FONT>
+    (None,Is,<FONT COLOR=#115511>'.'</FONT>),
+)
+
+<FONT COLOR=#1111CC># use Loop to tag subsections of a tagging table, i.e.</FONT>
+<FONT COLOR=#1111CC># emulate a Table-match</FONT>
+table2 = (
+    (<FONT COLOR=#115511>'presection'</FONT>,AllNotIn,<FONT COLOR=#115511>'('</FONT>,+1),
+    <FONT COLOR=#1111CC># match a group of characters enclosed in ()</FONT>
+    <FONT COLOR=#1111CC># &lt;loop&gt;</FONT>
+    (<FONT COLOR=#115511>'section'</FONT>,Loop,1,+4,+1),
+        (None,Is,<FONT COLOR=#115511>'('</FONT>),
+        (None,AllNotIn,<FONT COLOR=#115511>')'</FONT>),
+        (None,Is,<FONT COLOR=#115511>')'</FONT>,0,-3),
+    <FONT COLOR=#1111CC># must end with a dot</FONT>
+    (None,Is,<FONT COLOR=#115511>'.'</FONT>),
+)
+
+<FONT COLOR=#1111CC># read in all chars and then do lots of null loops</FONT>
+table3 = (
+    (<FONT COLOR=#115511>'Loops'</FONT>,Loop,10000,MatchOk),
+    <FONT COLOR=#1111CC>#[ignored]#AllNotIn '' F:previous T:previous</FONT>
+)
+
+<FONT COLOR=#1111CC>#TJI which is identical in effect to:</FONT>
+<FONT COLOR=#1111CC>#TJI</FONT>
+<FONT COLOR=#1111CC>#TJI table3a = Table is:</FONT>
+<FONT COLOR=#1111CC>#TJI    'Loops' = Loop 10000:</FONT>
+<FONT COLOR=#1111CC>#TJI        AllNotIn '' F:previous T:previous</FONT>
+<FONT COLOR=#1111CC>#TJI</FONT>
+<FONT COLOR=#1111CC>#TJI which is presumably the same as:</FONT>
+<FONT COLOR=#1111CC>#TJI</FONT>
+<FONT COLOR=#1111CC>#TJI table3b = Table is:</FONT>
+<FONT COLOR=#1111CC>#TJI     &lt;loop&gt;</FONT>
+<FONT COLOR=#1111CC>#TJI     'Loops' = Loop 10000:</FONT>
+<FONT COLOR=#1111CC>#TJI         AllNotIn '' F:&lt;loop&gt; T:&lt;loop&gt;</FONT>
+
+
+<FONT COLOR=#115511>""" Python - tag table for Python (Version 0.6)
+
+    * 0.5-&gt;0.6: changed the names of the tags !
+                fixed bug in match_str()
+
+    XXX can't handle (lambda ...) and misses not in 'if x is not'
+"""</FONT>
+
+comment = (
+    (<FONT COLOR=#115511>'comment'</FONT>,Table,(
+        (None,Is,<FONT COLOR=#115511>'#'</FONT>),
+        (None,AllNotIn,<FONT COLOR=#115511>'\n\r'</FONT>,MatchOk),
+    )),
+)
+
+whitespace = \
+    (None,AllIn,<FONT COLOR=#115511>' \t'</FONT>)
+opt_whitespace = \
+    whitespace      + (MatchOk,)
+
+identifier = (
+    (<FONT COLOR=#115511>'identifier'</FONT>,Table,(
+        (None,IsIn,alpha+<FONT COLOR=#115511>'_'</FONT>),
+        (None,AllIn,alpha+<FONT COLOR=#115511>'_'</FONT>+number,MatchOk),
+    )),
+)
+
+<FONT COLOR=#1111CC>#TJI Note that CallArg,(&lt;args&gt;) gets translated to CallArg(&lt;args&gt;) in our</FONT>
+<FONT COLOR=#1111CC>#TJI translated form (also note that this is not actually supported yet)</FONT>
+
+string = (
+    (<FONT COLOR=#115511>'str'</FONT>,Table,(
+        <FONT COLOR=#1111CC># hints</FONT>
+        <FONT COLOR=#1111CC>#[ignored]#IsIn '\"\''</FONT>
+        (None,Skip,-1),
+        <FONT COLOR=#1111CC># now let's see what we have...</FONT>
+        (None,Word,<FONT COLOR=#115511>'"""'</FONT>,+4,+1),
+            (<FONT COLOR=#115511>'string'</FONT>,NoWord,<FONT COLOR=#115511>'"""'</FONT>,+1),
+            (None,Word,<FONT COLOR=#115511>'"""'</FONT>),
+            (None,Jump,To,MatchOk),
+        (None,Word,<FONT COLOR=#115511>"'''"</FONT>,+4,+1),
+            (<FONT COLOR=#115511>'string'</FONT>,NoWord,<FONT COLOR=#115511>"'''"</FONT>,+1),
+            (None,Word,<FONT COLOR=#115511>"'''"</FONT>),
+            (None,Jump,To,MatchOk),
+        (None,Is,<FONT COLOR=#115511>'"'</FONT>,+3,+1),
+            <FONT COLOR=#1111CC>#[ignored]#'string' = CallArg(match_str,'"') F:next</FONT>
+            (None,Word,<FONT COLOR=#115511>'"'</FONT>),
+            (None,Jump,To,MatchOk),
+        (None,Is,<FONT COLOR=#115511>"'"</FONT>),
+        <FONT COLOR=#1111CC>#[ignored]#'string' = CallArg(match_str,"'") F:next</FONT>
+        (None,Word,<FONT COLOR=#115511>"'"</FONT>),
+        (None,Jump,To,MatchOk),
+    )),
+)
+
+skw = [<FONT COLOR=#115511>"del"</FONT>, <FONT COLOR=#115511>"from"</FONT>, <FONT COLOR=#115511>"lambda"</FONT>, <FONT COLOR=#115511>"return"</FONT>, <FONT COLOR=#115511>"and"</FONT>, <FONT COLOR=#115511>"elif"</FONT>,
+       <FONT COLOR=#115511>"global"</FONT>, <FONT COLOR=#115511>"not"</FONT>, <FONT COLOR=#115511>"try"</FONT>, <FONT COLOR=#115511>"break"</FONT>, <FONT COLOR=#115511>"else"</FONT>, <FONT COLOR=#115511>"if"</FONT>, <FONT COLOR=#115511>"or"</FONT>, <FONT COLOR=#115511>"while"</FONT>,
+       <FONT COLOR=#115511>"except"</FONT>, <FONT COLOR=#115511>"import"</FONT>, <FONT COLOR=#115511>"pass"</FONT>, <FONT COLOR=#115511>"continue"</FONT>, <FONT COLOR=#115511>"finally"</FONT>, <FONT COLOR=#115511>"in"</FONT>, <FONT COLOR=#115511>"print"</FONT>,
+       <FONT COLOR=#115511>"for"</FONT>, <FONT COLOR=#115511>"is"</FONT>, <FONT COLOR=#115511>"raise"</FONT>]
+keywords = word_in_list(skw)
+
+<FONT COLOR=#1111CC># note: '=lambda x:...' and '(lambda x:...' are not recognized,</FONT>
+<FONT COLOR=#1111CC>#       yet '= lambda x:...' and '( lambda x:...' are (just like in</FONT>
+<FONT COLOR=#1111CC>#       emacs python-mode) !</FONT>
+
+keyword = (
+    (<FONT COLOR=#115511>'kw'</FONT>,Table,(
+        (None,AllIn,<FONT COLOR=#115511>' \t\n\r'</FONT>),
+        <FONT COLOR=#1111CC># hints</FONT>
+        (None,IsIn,alpha),
+        (None,Skip,-1),
+        <FONT COLOR=#1111CC># one in the list keywords</FONT>
+        (<FONT COLOR=#115511>'keyword'</FONT>,Table,keywords,+3,+1),
+            (None,IsIn,<FONT COLOR=#115511>': \t\n\r'</FONT>),
+            (None,Jump,To,MatchOk),
+        <FONT COLOR=#1111CC># a function declaration</FONT>
+        (<FONT COLOR=#115511>'keyword'</FONT>,Word,<FONT COLOR=#115511>'def'</FONT>,+12,+1),
+            whitespace,
+            identifier,
+            (None,Is,<FONT COLOR=#115511>'('</FONT>),
+            <FONT COLOR=#1111CC># scan parameters</FONT>
+            <FONT COLOR=#1111CC># &lt;startTuple&gt;</FONT>
+            (<FONT COLOR=#115511>'parameter'</FONT>,AllNotIn,<FONT COLOR=#115511>'(),'</FONT>,+2,+1),
+                <FONT COLOR=#1111CC># are there more ?</FONT>
+                (None,Is,<FONT COLOR=#115511>','</FONT>,+1,-1),
+            <FONT COLOR=#1111CC># tuple in param-list ?</FONT>
+            (None,Is,<FONT COLOR=#115511>'('</FONT>,+1,-2),
+            <FONT COLOR=#1111CC># maybe we're done</FONT>
+            (None,Is,<FONT COLOR=#115511>')'</FONT>),
+            <FONT COLOR=#1111CC># to make sure...</FONT>
+            (None,Is,<FONT COLOR=#115511>','</FONT>,+1,-4),
+            (None,Is,<FONT COLOR=#115511>')'</FONT>,+1),
+            <FONT COLOR=#1111CC># test for correct syntax</FONT>
+            (None,IsIn,<FONT COLOR=#115511>': \t\n\r'</FONT>),
+            (None,Jump,To,MatchOk),
+        <FONT COLOR=#1111CC># a class declaration:</FONT>
+        (<FONT COLOR=#115511>'keyword'</FONT>,Word,<FONT COLOR=#115511>'class'</FONT>,+8,+1),
+            whitespace,
+            identifier,
+            (None,Is,<FONT COLOR=#115511>'('</FONT>,MatchOk),
+            <FONT COLOR=#1111CC># scan base-classes</FONT>
+            (<FONT COLOR=#115511>'baseclass'</FONT>,AllNotIn,<FONT COLOR=#115511>'),'</FONT>,+2),
+            <FONT COLOR=#1111CC># are there more ?</FONT>
+            (None,Is,<FONT COLOR=#115511>','</FONT>,+1,-1),
+            <FONT COLOR=#1111CC># we're done</FONT>
+            <FONT COLOR=#1111CC># &lt;done&gt;</FONT>
+            (None,Is,<FONT COLOR=#115511>')'</FONT>),
+            (None,IsIn,<FONT COLOR=#115511>': \t\n\r'</FONT>),
+    )),
+)
+
+python_script = (
+    <FONT COLOR=#1111CC># &lt;top&gt;</FONT>
+    comment         + (+1,0),
+    string          + (+1,-1),
+    keyword         + (+1,-2),
+    <FONT COLOR=#1111CC># end-of-file ?</FONT>
+    (None,EOF,Here,+1,MatchOk),
+    <FONT COLOR=#1111CC># skip uninteresting chars and restart</FONT>
+    (None,IsIn,any),
+    <FONT COLOR=#1111CC>#[ignored]#AllNotIn '#\'\"_ \n\r\t' F:&lt;top&gt; T:&lt;top&gt;</FONT>
+)
+
+
+<FONT COLOR=#115511>""" RTF - tag a RTF string (Version 0.2)
+
+    This version does recursion using the TableInList cmd.
+"""</FONT>
+
+<FONT COLOR=#1111CC># list of tables (hack to be able to do recursion)</FONT>
+tables = []
+
+<FONT COLOR=#1111CC># indices</FONT>
+rtf_index = 0
+
+numeral = (
+    <FONT COLOR=#1111CC># sign ?</FONT>
+    (None,Is,<FONT COLOR=#115511>'-'</FONT>,+1),
+    (None,AllIn,number),
+)
+
+<FONT COLOR=#1111CC># XXX: doesn't know how to handle \bin et al. with embedded {}</FONT>
+
+ctrlword = (
+    <FONT COLOR=#1111CC># name</FONT>
+    (<FONT COLOR=#115511>'name'</FONT>,AllIn,a2z),
+    <FONT COLOR=#1111CC># delimiter</FONT>
+    (None,Is,<FONT COLOR=#115511>' '</FONT>,+1,MatchOk),
+    (None,IsIn,number+<FONT COLOR=#115511>'-'</FONT>,+5,+1),
+        (None,Skip,-1),
+        (<FONT COLOR=#115511>'param'</FONT>,Table,numeral,0,MatchOk),
+        (None,Is,<FONT COLOR=#115511>' '</FONT>,+1,MatchOk),
+        (None,Skip,-1),
+)
+
+hex = set(number+<FONT COLOR=#115511>'abcdefABCDEF'</FONT>)
+notalpha = set(alpha,0)
+
+ctrlsymbol = (
+    <FONT COLOR=#1111CC># hexquote</FONT>
+    (None,Is,<FONT COLOR=#115511>"'"</FONT>,+3,+1),
+        (None,IsInSet,hex),
+        (None,IsInSet,hex),
+    <FONT COLOR=#1111CC># other</FONT>
+    (None,IsInSet,notalpha,+1,MatchOk),
+)
+
+rtf = (
+    <FONT COLOR=#1111CC># &lt;top&gt;</FONT>
+    <FONT COLOR=#1111CC># control ?</FONT>
+    (None,Is,<FONT COLOR=#115511>'\\'</FONT>,+3,+1),
+        <FONT COLOR=#1111CC># word</FONT>
+        (<FONT COLOR=#115511>'word'</FONT>,Table,ctrlword,+1,-1),
+        <FONT COLOR=#1111CC># symbol</FONT>
+        (<FONT COLOR=#115511>'symbol'</FONT>,Table,ctrlsymbol,+1,-2),
+    <FONT COLOR=#1111CC># closing group</FONT>
+    (None,Is,<FONT COLOR=#115511>'}'</FONT>,+2,+1),
+        (None,Skip,-1,0,MatchOk),
+    <FONT COLOR=#1111CC># nested group</FONT>
+    (None,Is,<FONT COLOR=#115511>'{'</FONT>,+3,+1),
+        <FONT COLOR=#1111CC># recurse</FONT>
+        <FONT COLOR=#1111CC>#[ignored]#'group' = TableInList(tables,rtf_index) #TJI Not yet supported</FONT>
+        (None,Is,<FONT COLOR=#115511>'}'</FONT>),
+        (None,Jump,To,-7),
+    <FONT COLOR=#1111CC># document text</FONT>
+    (<FONT COLOR=#115511>'text'</FONT>,AllNotIn,<FONT COLOR=#115511>'\\{}'</FONT>,+1,-8),
+    <FONT COLOR=#1111CC># EOF</FONT>
+    (<FONT COLOR=#115511>'eof'</FONT>,EOF,Here),
+)
+
+<FONT COLOR=#1111CC># add tables to list</FONT>
+tables.append(rtf)
+
+
+<FONT COLOR=#115511>""" Example for dynamic programming with Tag Tables... originated from
+    a posting to comp.lang.python by Tim Peters:
+
+ [Tim]
+ &gt; [Marc-Andre]
+ &gt; I can stick in any matching function I want, so I might even
+ &gt; let re.match() do some of the work. That should get me pretty close
+ &gt; to their semantics -- ok, I can't do it all the way:
+
+ Sure you can:  just let re.match() do *all* the work!  Presto, tables are as
+ powerful as re.
+
+ &gt; e.g. I currently don't have registers so back-references to already
+ &gt; matched groups will probably not work without reanalysing them.
+
+ So you have trouble recognizing e.g. the language of the form
+
+   &lt;tag&gt; ... &lt;/tag&gt;
+
+ where "tag" can be any (say) arbitrary alphanumeric string?  &lt;S&gt; &lt;Like&gt; this
+ clause is in that language &lt;/Like&gt;, &lt;but&gt; this clause isn't &lt;but/&gt;, while
+ the whole sentence is -- if you ignore the trailing period &lt;/S&gt;.  It's even
+ better if you can do computation on backreferences and use the results to
+ guide further parsing.  E.g., recognizing Fortran Hollerith strings requires
+ this (a string of digits, followed by "H" or "h", followed by any string of
+ characters whose length is equal to the decimal value of the string of
+ digits; and that's too hard for regexps too).
+
+ teasingly y'rs  - tim
+ """</FONT>
+
+<FONT COLOR=#1111CC>#TJI The original code is:</FONT>
+<FONT COLOR=#1111CC>#TJI       TIM = (</FONT>
+<FONT COLOR=#1111CC>#TJI           # Check starting tag</FONT>
+<FONT COLOR=#1111CC>#TJI           (opening_tag,Table+CallTag,</FONT>
+<FONT COLOR=#1111CC>#TJI            ((None,Is,'&lt;'),</FONT>
+<FONT COLOR=#1111CC>#TJI             (None,AllInSet,alphanumeric_set),</FONT>
+<FONT COLOR=#1111CC>#TJI             (None,Is,'&gt;'),</FONT>
+<FONT COLOR=#1111CC>#TJI             )),</FONT>
+<FONT COLOR=#1111CC>#TJI           # Find closing tag</FONT>
+<FONT COLOR=#1111CC>#TJI           ('text',TableInList,(tables,0)),</FONT>
+<FONT COLOR=#1111CC>#TJI           # For completeness mark the closing tag too</FONT>
+<FONT COLOR=#1111CC>#TJI           (closing_tag,Table+CallTag,</FONT>
+<FONT COLOR=#1111CC>#TJI            ((None,Word,'&lt;/'),</FONT>
+<FONT COLOR=#1111CC>#TJI             (None,AllInSet,alphanumeric_set),</FONT>
+<FONT COLOR=#1111CC>#TJI             (None,Is,'&gt;'),</FONT>
+<FONT COLOR=#1111CC>#TJI             )),</FONT>
+<FONT COLOR=#1111CC>#TJI       )</FONT>
+
+<FONT COLOR=#1111CC>#TJI This translates as the following, which can't yet be translated...</FONT>
+
+<FONT COLOR=#1111CC>#TJI TIM = Table is:</FONT>
+<FONT COLOR=#1111CC>#TJI     # Check starting tag</FONT>
+<FONT COLOR=#1111CC>#TJI     opening_tag = Table+CallTag is: #TJI This is not supported yet</FONT>
+<FONT COLOR=#1111CC>#TJI         Is '&lt;'</FONT>
+<FONT COLOR=#1111CC>#TJI         AllInSet alphanumeric_set</FONT>
+<FONT COLOR=#1111CC>#TJI         Is '&gt;'</FONT>
+<FONT COLOR=#1111CC>#TJI     # Find closing tag</FONT>
+<FONT COLOR=#1111CC>#TJI     'text' = TableInList(tables,0)  #TJI This is not supported yet</FONT>
+<FONT COLOR=#1111CC>#TJI     # For completeness mark the closing tag too</FONT>
+<FONT COLOR=#1111CC>#TJI     closing_tag = Table+CallTag is: #TJI This is not supported yet</FONT>
+<FONT COLOR=#1111CC>#TJI         Word '&lt;/'</FONT>
+<FONT COLOR=#1111CC>#TJI         AllInSet alphanumeric_set</FONT>
+<FONT COLOR=#1111CC>#TJI         Is '&gt;'</FONT>
+
+
+<FONT COLOR=#115511>""" Words - tag words in a string (Version 0.2) """</FONT>
+
+lcwords = []
+cwords = []
+
+<FONT COLOR=#1111CC>#TJI The commented out portions cannot yet be translated...</FONT>
+
+<FONT COLOR=#1111CC>#TJI lower_case_word = Table is:</FONT>
+<FONT COLOR=#1111CC>#TJI     lcwords = AppendToTag+Table is: #TJI This is not supported yet</FONT>
+<FONT COLOR=#1111CC>#TJI         # first char in word</FONT>
+<FONT COLOR=#1111CC>#TJI         IsIn a2z+umlaute</FONT>
+<FONT COLOR=#1111CC>#TJI         # all other chars (if there are any)</FONT>
+<FONT COLOR=#1111CC>#TJI         AllIn german_alpha F:MatchOk</FONT>
+
+<FONT COLOR=#1111CC>#TJI capital_word = Table is:</FONT>
+<FONT COLOR=#1111CC>#TJI     cwords = AppendToTag+Table is: #TJI This is not supported yet</FONT>
+<FONT COLOR=#1111CC>#TJI         # first char in word</FONT>
+<FONT COLOR=#1111CC>#TJI         IsIn A2Z+Umlaute</FONT>
+<FONT COLOR=#1111CC>#TJI         # all other chars (if there are any)</FONT>
+<FONT COLOR=#1111CC>#TJI         AllIn german_alpha F:MatchOk</FONT>
+
+tag_words = (
+    <FONT COLOR=#1111CC># &lt;top&gt;</FONT>
+    lower_case_word + (+1,+2),
+    capital_word    + (+1,),
+    <FONT COLOR=#1111CC># &lt;after&gt;</FONT>
+    (None,AllIn,white+newline,+1),
+    (None,AllNotIn,german_alpha+white+newline,+1), <FONT COLOR=#1111CC># uninteresting</FONT>
+    (None,EOF,Here,-4),                 <FONT COLOR=#1111CC># EOF</FONT>
+)
+
+</PRE>
+		  <!--footer-->
+		  </BODY>
