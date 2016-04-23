@@ -1,5 +1,4 @@
-#!/bin/env python -d
-#!/tools/net/app/Python-1.5.2/bin/python1.5
+#!/usr/bin/env python2
 
 """Translate - a first attempt at parsing my little language
 
@@ -77,7 +76,7 @@ else:
 # - I'm not personally too keen on import *, but it seems to be
 #   the recommended thing, so I'll leave it for now...
 try:
-    from TextTools import *
+    from mx.TextTools import *
 except:
     from TextTools.Constants.TagTables import *
     from TextTools.Constants.Sets import *
@@ -2315,13 +2314,14 @@ def main():
     force_overwrite = 0
     compare_tables  = 0
 
+    global DEBUGGING
+
     if os.name == "posix":
         use_testdata = 0
     else:
         # At home...
         use_testdata = 1
         use_stdout   = 1
-        global DEBUGGING
         DEBUGGING    = 0
 
     # Do we have command line arguments?
@@ -2347,7 +2347,6 @@ def main():
         elif word == "-compare":
             compare_tables = 1
         elif word == "-diag":
-            global DEBUGGING
             DEBUGGING = 1
         elif word == "-test":
             use_testdata = 1
