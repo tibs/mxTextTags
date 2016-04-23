@@ -1,8 +1,8 @@
 ==========
 mxTextTags
 ==========
-Back in 1999, I discovered Marc-Andre Lemburg's mxTextTools_, which is a
-fascinating and elegant parsing mechanism. At the time, ASCII text was
+Back in the late 1990s, I discovered Marc-Andre Lemburg's mxTextTools_, which
+is a fascinating and elegant parsing mechanism. At the time, ASCII text was
 dominant, and the version of mxTextTools that worked on 8-bit data was
 blindingly fast compare to other Python solutions.
 
